@@ -1,4 +1,9 @@
 import argparse
+import yaml
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[3]))
+print("sys.path", sys.path)
 from conf.config import Config
 from src.search.afd import AfdSearch
 from src.search.deepep import DeepEpSearch
@@ -103,3 +108,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    import subprocess
+    subprocess.run(["python", "src/visualization/throughput.py"])
+    subprocess.run(["python", "src/visualization/pipeline.py"])
