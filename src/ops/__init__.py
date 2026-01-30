@@ -5,7 +5,8 @@ from src.ops.swiglu import OpSwiglu
 from src.ops.mla_prolog import OpMlaProlog
 from src.ops.communication import Dispatch, Combine
 from src.ops.rotary import OpRotary
-from src.ops.norm import OpNorm
+from src.ops.norm import OpAddRmsNorm
+from src.ops.dynamicquant import OpDynamicQuant
 
 __all__ = [
     "BaseOp",
@@ -19,6 +20,7 @@ __all__ = [
     "OpMlaProlog",
     "Dispatch",
     "Combine",
-    "OpRotary"
-    "OpNorm"
+    "OpRotary",
+    "OpAddRmsNorm",
+    "OpDynamicQuant"
 ]

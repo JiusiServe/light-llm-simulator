@@ -77,7 +77,7 @@ class BaseOp(ABC):
             The memory bandwidth utilization.
             Usually, the memory bandwidth utilization is around 0.85.
         """
-        return 0.85
+        return 0.7
 
     def compute_cost(self) -> float:
         """

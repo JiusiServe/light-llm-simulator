@@ -11,7 +11,8 @@ from src.ops import (
     Combine,
     OpGroupedMatmul,
     OpSwiglu,
-    OpNorm
+    OpAddRmsNorm,
+    OpDynamicQuant
 )
 
 class Qwen235DecodeAttn(BaseModule):
@@ -23,13 +24,16 @@ class Qwen235DecodeAttn(BaseModule):
         It can calculate the end-to-end time, compute time and memory time of the attention.
     Attributes:
         attn_bs: The batch size of the attention.
+        input_norm: The input layernorm operator.
         query_states: The query projection.
         key_states: The key projection.
         value_states: The value projection
         query_rope: The query rotary position embedding.
         key_rope: The key rotary position embedding.
         page_attention: The page attention operator.
+        dynamic_quant: The dynamic quant operator.
         bmm_o_proj: The output projection operator.
+        post_attention_norm: The post attention layernorm operator.
     '''
     def __init__(self, config: Config):
         super().__init__(config)
@@ -39,6 +43,14 @@ class Qwen235DecodeAttn(BaseModule):
         self._build_ops()
 
     def _build_ops(self):
+        # input layernorm
+        self.input_norm = OpAddRmsNorm(
+            "inputlayernorm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
         # q_proj
         self.bs = self.attn_bs * self.config.seq_len
         self.query_states = OpGeMatmul(
@@ -83,6 +95,13 @@ class Qwen235DecodeAttn(BaseModule):
         )
         # page attention
         self.page_attention = GQAFlashAttentionFP16(self.config)
+        # dynamic quant
+        self.dynamic_quant = OpDynamicQuant(
+            "attn_dynamic_quant",
+            self.bs,
+            self.model_config.num_heads * self.model_config.head_size,
+            self.aichip_config
+        )
         # compute o_proj
         self.bmm_o_proj = OpQuantBatchMatmul(
             "bmm_o_proj",
@@ -91,62 +110,78 @@ class Qwen235DecodeAttn(BaseModule):
             self.model_config.hidden_size,
             self.aichip_config
         )
-        # compute norm
-        self.norm = OpNorm(self.attn_bs, self.aichip_config)
+        # post attention layernorm
+        self.post_attention_norm = OpAddRmsNorm(
+            "post attention layernorm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
 
         self.ops = [
+            self.input_norm,
             self.query_states,
             self.key_states,
             self.value_states,
             self.query_rope,
             self.key_rope,
             self.page_attention,
+            self.dynamic_quant,
             self.bmm_o_proj,
-            self.norm
+            self.post_attention_norm
         ]
 
     def _aggregate_times(self):
         self.e2e_time = (
+            self.input_norm.e2e_time +
             self.query_states.e2e_time +
             self.key_states.e2e_time +
             self.value_states.e2e_time +
             self.query_rope.e2e_time +
             self.key_rope.e2e_time +
             self.page_attention.e2e_time +
+            self.dynamic_quant.e2e_time +
             self.bmm_o_proj.e2e_time +
-            self.norm.e2e_time
+            self.post_attention_norm.e2e_time
         )
         self.compute_time = (
+            self.input_norm.compute_time +
             self.query_states.compute_time +
             self.key_states.compute_time +
             self.value_states.compute_time +
             self.query_rope.compute_time +
             self.key_rope.compute_time +
             self.page_attention.compute_time +
+            self.dynamic_quant.compute_time +
             self.bmm_o_proj.compute_time +
-            self.norm.compute_time
+            self.post_attention_norm.compute_time
         )
         self.memory_time = (
+            self.input_norm.memory_time +
             self.query_states.memory_time +
             self.key_states.memory_time +
             self.value_states.memory_time +
             self.query_rope.memory_time +
             self.key_rope.memory_time +
             self.page_attention.memory_time +
+            self.dynamic_quant.memory_time +
             self.bmm_o_proj.memory_time +
-            self.norm.memory_time
+            self.post_attention_norm.memory_time
         )
 
         logging.info(
             f"Attention Module - attn_bs: {self.config.attn_bs}, "
+            f"input_norm: {self.input_norm.e2e_time * 1e6:.2f}us, "
             f"query_states: {self.query_states.e2e_time * 1e6:.2f}us, "
             f"key_states: {self.key_states.e2e_time * 1e6:.2f}us, "
             f"value_states: {self.value_states.e2e_time * 1e6:.2f}us, "
             f"query_rope: {self.query_rope.e2e_time * 1e6:.2f}us, "
             f"key_rope: {self.key_rope.e2e_time * 1e6:.2f}us, "
             f"page_attention: {self.page_attention.e2e_time * 1e6:.2f}us, "
+            f"dynamic_quant: {self.dynamic_quant.e2e_time * 1e6:.2f}us, "
             f"bmm_o_proj: {self.bmm_o_proj.e2e_time * 1e6:.2f}us, "
-            f"norm: {self.norm.e2e_time * 1e6: .2f}us"
+            f"post_attention_norm: {self.post_attention_norm.e2e_time * 1e6:.2f}us"
         )
 
 
