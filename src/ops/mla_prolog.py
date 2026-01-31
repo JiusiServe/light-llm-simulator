@@ -10,7 +10,7 @@ class OpMlaProlog:
     '''
     def __init__(self, config):
         self.model_config = config.model_config
-        self.aichip_config = config.aichip_config
+        self.aichip_config = config.aichip_config1
         self.config = config
         self.attn_bs = config.attn_bs * config.seq_len
         # compute query, key, value

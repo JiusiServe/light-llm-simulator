@@ -10,7 +10,7 @@ class Dispatch(BaseOp):
     '''
     def __init__(self, config, elem_size=1):
         self.config = config
-        super().__init__("Dispatch", config.aichip_config, elem_size)
+        super().__init__("Dispatch", config.aichip_config2, elem_size)
         self.model_config = config.model_config
 
     def op_memory_disc(self):
@@ -26,15 +26,22 @@ class Dispatch(BaseOp):
                 self.elem_size
             )
         elif self.config.serving_mode == "AFD":
+            coeff = max(
+                self.config.attn_die / self.config.ffn_die,
+                self.config.ffn_die / self.config.attn_die
+            )
             dispatch_packet = (
                 self.config.attn_bs *
                 self.config.seq_len *
                 self.model_config.hidden_size *
                 self.model_config.num_experts_per_tok *
                 self.elem_size *
-                self.config.attn_die /
-                self.config.ffn_die
+                coeff
             )
+            self.inter_node_bandwidth = min(
+                self.config.aichip_config1.inter_node_bandwidth ,
+                self.config.aichip_config2.inter_node_bandwidth
+            ) * self.op_memory_disc()
         self.memory_time = dispatch_packet / self.inter_node_bandwidth
         return self.memory_time
 
@@ -48,7 +55,7 @@ class Combine(BaseOp):
     '''
     def __init__(self, config, elem_size=2):
         self.config = config
-        super().__init__("Dispatch", config.aichip_config, elem_size)
+        super().__init__("Combine", config.aichip_config2, elem_size)
         self.model_config = config.model_config
 
     def op_memory_disc(self):
@@ -64,14 +71,21 @@ class Combine(BaseOp):
                 self.elem_size
             )
         elif self.config.serving_mode == "AFD":
+            coeff = max(
+                self.config.attn_die / self.config.ffn_die,
+                self.config.ffn_die / self.config.attn_die
+            )
             combine_packet = (
                 self.config.attn_bs *
                 self.config.seq_len *
                 self.model_config.hidden_size *
                 self.model_config.num_experts_per_tok *
                 self.elem_size *
-                self.config.attn_die /
-                self.config.ffn_die
+                coeff
             )
+            self.inter_node_bandwidth = min(
+                self.config.aichip_config1.inter_node_bandwidth,
+                self.config.aichip_config2.inter_node_bandwidth
+            ) * self.op_memory_disc()
         self.memory_time = combine_packet / self.inter_node_bandwidth
         return self.memory_time

@@ -38,7 +38,7 @@ class Qwen235DecodeAttn(BaseModule):
     def __init__(self, config: Config):
         super().__init__(config)
         self.model_config = config.model_config
-        self.aichip_config = config.aichip_config
+        self.aichip_config = self.config.aichip_config1
         self.attn_bs = config.attn_bs
         self._build_ops()
 
@@ -205,6 +205,7 @@ class Qwen235DecodeMoe(BaseModule):
         self.commu_time: float = 0.0
         self.dispatch_time: float = 0.0
         self.combine_time: float = 0.0
+        self.aichip_config = self.config.aichip_config2
         self._build_ops()
 
     def _build_ops(self):
