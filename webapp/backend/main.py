@@ -36,12 +36,16 @@ app.mount("/data", StaticFiles(directory="data"), name="data")
 class RunRequest(BaseModel):
     serving_mode: str = "AFD"
     model_type: str = "deepseek-ai/DeepSeek-V3"
-    device_type: str = "Ascend_A3Pod"
+    device_type1: str = "Ascend_A3Pod"
+    device_type2: str = "Ascend_A3Pod"
     min_attn_bs: int = 2
     max_attn_bs: int = 1000
-    min_die: int = 16
-    max_die: int = 768
-    die_step: Optional[int] = 16
+    min_die1: int = 16
+    max_die1: int = 288
+    min_die2: int = 16
+    max_die2: int = 288
+    die_step1: int = 16
+    die_step2: int = 16
     tpot: Optional[List[int]] = [50]
     kv_len: Optional[List[int]] = [4096]
     micro_batch_num: Optional[List[int]] = [2]
@@ -56,18 +60,21 @@ def _sanitize_args(req: RunRequest) -> List[str]:
         "python", SRC_CLI,
         "--serving_mode", req.serving_mode,
         "--model_type", req.model_type,
-        "--device_type", req.device_type,
+        "--device_type1", req.device_type1,
+        "--device_type2", req.device_type2,
         "--min_attn_bs", str(req.min_attn_bs),
         "--max_attn_bs", str(req.max_attn_bs),
-        "--min_die", str(req.min_die),
-        "--max_die", str(req.max_die),
+        "--min_die1", str(req.min_die1),
+        "--max_die1", str(req.max_die1),
+        "--min_die2", str(req.min_die2),
+        "--max_die2", str(req.max_die2),
+        "--die_step1", str(req.die_step1),
+        "--die_step2", str(req.die_step2),
         "--next_n", str(req.next_n),
         "--multi_token_ratio", str(req.multi_token_ratio),
         "--attn_tensor_parallel", str(req.attn_tensor_parallel),
         "--ffn_tensor_parallel", str(req.ffn_tensor_parallel),
     ]
-    if req.die_step is not None:
-        args += ["--die_step", str(req.die_step)]
     if req.tpot:
         args += ["--tpot"] + [str(x) for x in req.tpot]
     if req.kv_len:
@@ -116,13 +123,22 @@ def get_logs(run_id: str):
 
 
 @api.get("/results")
-def list_results(model_type: str, device_type: str, total_die: int, tpot: int, kv_len: int):
-    image1 = f"/data/images/throughput/{device_type}-{model_type}-mbn2-total_die{total_die}.png"
-    image2 = f"/data/images/throughput/{device_type}-{model_type}-mbn3-total_die{total_die}.png"
-    image3 = f"/data/images/throughput/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.png"
-    image4 = f"/data/images/pipeline/mbn2/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
-    image5 = f"/data/images/pipeline/mbn3/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
-    image6 = f"/data/images/pipeline/deepep/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
+def list_results(
+    model_type: str,
+    device_type1: str,
+    device_type2: str,
+    total_die1: int,
+    total_die2: int,
+    tpot: int,
+    kv_len: int
+    ):
+    total_die = total_die1 + total_die2
+    image1 = f"/data/images/throughput/{device_type1}-{device_type2}-{model_type}-mbn2-total_die{total_die}.png"
+    image2 = f"/data/images/throughput/{device_type1}-{device_type2}-{model_type}-mbn3-total_die{total_die}.png"
+    image3 = f"/data/images/pipeline/deepep/{device_type1}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die1}.png"
+    image4 = f"/data/images/pipeline/mbn2/{device_type1}-{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
+    image5 = f"/data/images/pipeline/mbn3/{device_type1}-{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
+    image6 = f"/data/images/pipeline/deepep/{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die2}.png"
     throughput_images = [image1, image2, image3]
     pipeline_images = [image4, image5, image6]
     print(throughput_images)
@@ -185,13 +201,15 @@ def get_constants():
 
 @api.get("/fetch_csv_results")
 def fetch_csv_results(
-    device_type: str,
+    device_type1: str,
+    device_type2: str,
     model_type: str,
     tpot: int,
     kv_len: int,
     serving_mode: str = "AFD",
     micro_batch_num: Optional[int] = 1,
-    total_die: Optional[int] = None,
+    total_die1: Optional[int] = None,
+    total_die2: Optional[int] = None,
 ):
     repo_root = Path(__file__).resolve().parents[2]
     if serving_mode == "AFD":
@@ -200,7 +218,7 @@ def fetch_csv_results(
         dir_name = repo_root / "data" / "deepep"
     else:
         raise HTTPException(status_code=400, detail="Unsupported serving_mode")
-    file_name = f"{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
+    file_name = f"{device_type1}-{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
     path = dir_name / file_name
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"file not found: {path}")
@@ -208,9 +226,19 @@ def fetch_csv_results(
         df = pd.read_csv(path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"read csv error: {e}")
-    if total_die is not None:
+    total_die = total_die1 + total_die2
+    if total_die1 is not None and total_die2 is not None:
         # allow both numeric and string comparisons
-        df = df[df["total_die"].astype(str) == str(total_die)]
+        if serving_mode == "AFD":
+            df = df[df["total_die"].astype(str) == str(total_die)]
+        elif serving_mode == "DeepEP":
+            df = df[
+                (df["total_die"].astype(str) == str(total_die)) &
+                (df["total_die1"].astype(str) == str(total_die1)) &
+                (df["total_die2"].astype(str) == str(total_die2))
+                ]
+    else:
+        raise HTTPException(status_code=400, detail="total_die1 and total_die2 are required")
     return df.to_dict(orient="records")
 
 

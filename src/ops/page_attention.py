@@ -10,7 +10,7 @@ class MLAFlashAttentionFP16(BaseOp):
     '''
     def __init__(self, config, elem_size=2):
         self.op_disc_factor()
-        super().__init__("MLAFlashAttentionFP16", config.aichip_config, elem_size)
+        super().__init__("MLAFlashAttentionFP16", config.aichip_config1, elem_size)
         self.model_config = config.model_config
         self.attn_bs = config.attn_bs
         self.kv_len = config.kv_len
@@ -58,7 +58,7 @@ class MLAFlashAttentionInt8(BaseOp):
         self.attn_bs = config.attn_bs
         self.kv_len = config.kv_len
         self.seq_len = config.seq_len
-        super().__init__("MLAFlashAttentionInt8", config.aichip_config, elem_size)
+        super().__init__("MLAFlashAttentionInt8", config.aichip_config1, elem_size)
 
     def op_compute_disc(self):
         if self.attn_bs < 32:
@@ -151,7 +151,7 @@ class GQAFlashAttentionFP16(BaseOp):
     '''
     def __init__(self, config, elem_size=2):
         self.op_compute_disc()
-        super().__init__("FlashAttentionFP16", config.aichip_config, elem_size)
+        super().__init__("FlashAttentionFP16", config.aichip_config1, elem_size)
         self.model_config = config.model_config
         self.attn_bs = config.attn_bs
         self.kv_len = config.kv_len

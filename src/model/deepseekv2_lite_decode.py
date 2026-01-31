@@ -36,7 +36,7 @@ class DeepSeekV2LiteDecodeAttn(BaseModule):
     def __init__(self, config: Config):
         super().__init__(config)
         self.attn_bs = self.config.attn_bs
-
+        self.aichip_config = self.config.aichip_config1
         self._build_ops()
 
     def _build_ops(self):
@@ -148,6 +148,7 @@ class DeepSeekV2LiteDecodeMLP(BaseModule):
         self.commu_time: float = 0.0
         self.dispatch_time: float = 0.0
         self.combine_time: float = 0.0
+        self.aichip_config = self.config.aichip_config1
         self._build_ops()
 
     def _build_ops(self):
@@ -216,6 +217,7 @@ class DeepSeekV2LiteDecodeMoe(BaseModule):
         self.commu_time: float = 0.0
         self.dispatch_time: float = 0.0
         self.combine_time: float = 0.0
+        self.aichip_config = self.config.aichip_config2
         self._build_ops()
 
     def _build_ops(self):
