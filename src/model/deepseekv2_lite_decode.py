@@ -5,7 +5,7 @@ from src.model.base import BaseModule
 from src.ops import (
     OpMlaProlog,
     MLAFlashAttentionInt8,
-    OpGeMatmul,
+    OpTransposeBatchMatmul,
     OpQuantBatchMatmul,
     OpSwiglu,
     OpGroupedMatmul,
@@ -53,7 +53,7 @@ class DeepSeekV2LiteDecodeAttn(BaseModule):
         # page attention
         self.page_attention = MLAFlashAttentionInt8(self.config)
         # matrix absorption
-        self.bmm_uv_absorb = OpGeMatmul(
+        self.bmm_uv_absorb = OpTransposeBatchMatmul(
             "bmm_uv_absorb",
             self.attn_bs * self.config.seq_len,
             self.model_config.kv_lora_rank,

@@ -108,7 +108,7 @@ class HWConf:
                 num_dies_per_node=16, aichip_memory=64 * GB_2_BYTE, cube_flops_fp16=353.8 * TB_2_BYTE,
                 cube_flops_int8=707.9 * TB_2_BYTE, vector_flops_fp16=22 * TB_2_BYTE,
                 vector_flops_int8=44 * TB_2_BYTE, intra_node_bandwidth=196 * GB_2_BYTE,
-                inter_node_bandwidth=50 * GB_2_BYTE, local_memory_bandwidth=1.6 * TB_2_BYTE,
+                inter_node_bandwidth=196 * GB_2_BYTE, local_memory_bandwidth=1.6 * TB_2_BYTE,
                 bwsio_memory_bandwidth = 224 * GB_2_BYTE, onchip_buffer_size=192 * MB_2_BYTE),
             DeviceType.ASCENDDAVID100: cfg(
                 num_dies_per_node=8, aichip_memory=128 * GB_2_BYTE, cube_flops_fp16=445.6 * TB_2_BYTE,

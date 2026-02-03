@@ -166,6 +166,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-    import subprocess
-    subprocess.run(["python", "src/visualization/throughput.py"])
-    subprocess.run(["python", "src/visualization/pipeline.py"])
+    # import subprocess
+    # subprocess.run(["python", "src/visualization/throughput.py"])
+    # subprocess.run(["python", "src/visualization/pipeline.py"])

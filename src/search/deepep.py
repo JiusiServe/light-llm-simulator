@@ -37,10 +37,16 @@ class DeepEpSearch(BaseSearch):
     def search_bs(self, min_die, max_die, die_step, attn_bs_min, attn_bs_max) -> list[list[float]]:
         perf_deepep_results = []
         for total_die in range(min_die, max_die, die_step):
-            routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.config.model_config.n_routed_experts / total_die)
-            )
+            if total_die >= 64:
+                routed_expert_per_die = self.config.model_config.n_shared_experts + max(
+                    MIN_ROUTED_EXPERT_PER_DIE,
+                    math.ceil(self.config.model_config.n_routed_experts / total_die) + 1
+                )
+            else:
+                routed_expert_per_die = self.config.model_config.n_shared_experts + max(
+                    MIN_ROUTED_EXPERT_PER_DIE,
+                    math.ceil(self.config.model_config.n_routed_experts / total_die)
+                )
             for attn_bs in range(attn_bs_min, attn_bs_max):
                 if get_attention_family(self.config.model_type) == "MLA":
                     kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_MLA_memory_size(self.config.model_config, attn_bs)
@@ -72,7 +78,7 @@ class DeepEpSearch(BaseSearch):
                     max(commu_time, max(attn_time, moe_time)) *
                     self.config.micro_batch_num
                 )
-                e2e_time = e2e_time_per_moe_layer * self.config.model_config.num_moe_layers
+                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
 
                 # compute memory
                 ffn_dynamic_memory = (

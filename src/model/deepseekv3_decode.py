@@ -5,14 +5,16 @@ from src.model.base import BaseModule
 from src.ops import (
     OpMlaProlog,
     MLAFlashAttentionInt8,
-    OpGeMatmul,
+    OpMatmul,
+    OpTransposeBatchMatmul,
     OpQuantBatchMatmul,
     OpSwiglu,
     OpGroupedMatmul,
     Dispatch,
     Combine,
     OpAddRmsNorm,
-    OpDynamicQuant
+    OpDynamicQuant,
+    OpMoeGating
 )
 
 
@@ -53,11 +55,12 @@ class DeepSeekV3DecodeAttn(BaseModule):
         # page attention
         self.page_attention = MLAFlashAttentionInt8(self.config)
         # matrix absorption
-        self.bmm_uv_absorb = OpGeMatmul(
+        self.bmm_uv_absorb = OpTransposeBatchMatmul(
             "bmm_uv_absorb",
+            self.model_config.num_attention_heads,
             self.attn_bs * self.config.seq_len,
             self.model_config.kv_lora_rank,
-            self.model_config.num_attention_heads * self.model_config.v_head_dim,
+            self.model_config.v_head_dim,
             self.aichip_config
         )
         # dynamic quant
@@ -83,6 +86,22 @@ class DeepSeekV3DecodeAttn(BaseModule):
             self.model_config.hidden_size,
             self.aichip_config
         )
+        # compute gating score
+        self.matmul = OpMatmul(
+            "matmul",
+            self.attn_bs * self.config.seq_len,
+            self.model_config.hidden_size,
+            self.model_config.n_routed_experts,
+            self.aichip_config
+        )
+        self.gating = OpMoeGating(
+            "gating",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.n_routed_experts,
+            self.model_config.num_experts_per_tok,
+            self.aichip_config
+        )
         self.ops = [
             self.input_norm,
             self.mla_prolog,
@@ -90,7 +109,9 @@ class DeepSeekV3DecodeAttn(BaseModule):
             self.bmm_uv_absorb,
             self.dynamic_quant,
             self.bmm_o_proj,
-            self.post_attention_norm
+            self.post_attention_norm,
+            self.matmul,
+            self.gating
         ]
 
     def _aggregate_times(self):
@@ -101,7 +122,9 @@ class DeepSeekV3DecodeAttn(BaseModule):
             self.bmm_uv_absorb.e2e_time +
             self.dynamic_quant.e2e_time +
             self.bmm_o_proj.e2e_time +
-            self.post_attention_norm.e2e_time
+            self.post_attention_norm.e2e_time +
+            self.matmul.e2e_time +
+            self.gating.e2e_time
         )
         self.compute_time = (
             self.input_norm.compute_time +
@@ -110,7 +133,9 @@ class DeepSeekV3DecodeAttn(BaseModule):
             self.bmm_uv_absorb.compute_time +
             self.dynamic_quant.compute_time +
             self.bmm_o_proj.compute_time +
-            self.post_attention_norm.compute_time
+            self.post_attention_norm.compute_time +
+            self.matmul.compute_time +
+            self.gating.compute_time
         )
         self.memory_time = (
             self.input_norm.memory_time +
@@ -119,7 +144,9 @@ class DeepSeekV3DecodeAttn(BaseModule):
             self.bmm_uv_absorb.memory_time +
             self.dynamic_quant.memory_time +
             self.bmm_o_proj.memory_time + 
-            self.post_attention_norm.memory_time
+            self.post_attention_norm.memory_time +
+            self.matmul.memory_time +
+            self.gating.memory_time
         )
         logging.info(
             f"Attention Module - attn_bs: {self.config.attn_bs}, "
@@ -129,7 +156,10 @@ class DeepSeekV3DecodeAttn(BaseModule):
             f"bmm_uv_absorb: {self.bmm_uv_absorb.e2e_time * 1e6:.2f}us, "
             f"dynamic_quant: {self.dynamic_quant.e2e_time * 1e6:.2f}us, "
             f"bmm_o_proj: {self.bmm_o_proj.e2e_time * 1e6:.2f}us, "
-            f"post_attention_norm: {self.post_attention_norm.e2e_time * 1e6:.2f}us"
+            f"post_attention_norm: {self.post_attention_norm.e2e_time * 1e6:.2f}us, "
+            f"matmul: {self.matmul.e2e_time * 1e6:.2f}us, "
+            f"gating: {self.gating.e2e_time * 1e6:.2f}us, "
+            f"attn_time: {self.e2e_time * 1e6:.2f}us"
         )
 
 
@@ -275,7 +305,7 @@ class DeepSeekV3DecodeMoe(BaseModule):
         self.commu_time = self.dispatch_time + self.combine_time
 
         logging.info(
-            f"MoE Module - ffn_bs: {self.config.ffn_bs}, "
+            f"MoE Module - attn_bs: {self.config.attn_bs}, ffn_bs: {self.config.ffn_bs}, "
             f"moe_up: {self.moe_up.e2e_time * 1e6:.2f}us, "
             f"moe_swiglu: {self.moe_swiglu.e2e_time * 1e6:.2f}us, "
             f"moe_down: {self.moe_down.e2e_time * 1e6:.2f}us, "
