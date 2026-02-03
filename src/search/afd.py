@@ -46,10 +46,16 @@ class AfdSearch(BaseSearch):
                 if self.config.device_type1 == self.config.device_type2:
                     if total_die % self.config.aichip_config1.num_dies_per_node != 0:
                         continue
-                routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                    MIN_ROUTED_EXPERT_PER_DIE,
-                    math.ceil(self.config.model_config.n_routed_experts / ffn_die)
-                )
+                if ffn_die >= 64:
+                    routed_expert_per_die = self.config.model_config.n_shared_experts + max(
+                        MIN_ROUTED_EXPERT_PER_DIE,
+                        math.ceil(self.config.model_config.n_routed_experts / ffn_die) + 1
+                    )
+                else:
+                    routed_expert_per_die = self.config.model_config.n_shared_experts + max(
+                        MIN_ROUTED_EXPERT_PER_DIE,
+                        math.ceil(self.config.model_config.n_routed_experts / ffn_die)
+                    )
                 self.config.routed_expert_per_die = routed_expert_per_die
                 self.config.ffn_die = ffn_die
                 self.config.attn_die = attn_die
@@ -104,7 +110,7 @@ class AfdSearch(BaseSearch):
                     self.config.ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok * attn_die / ffn_die
                     # compute e2e time
                     e2e_time = (
-                        e2e_time_per_moe_layer * self.config.model_config.num_moe_layers +
+                        e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1) +
                         e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
                     )
                     throughput = (

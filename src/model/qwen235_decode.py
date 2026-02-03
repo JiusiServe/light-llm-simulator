@@ -3,7 +3,7 @@ from conf.common import MAX_AVG_RATIO
 from conf.config import Config
 from src.model.base import BaseModule
 from src.ops import (
-    OpGeMatmul,
+    OpTransposeBatchMatmul,
     OpQuantBatchMatmul,
     OpRotary,
     GQAFlashAttentionFP16,

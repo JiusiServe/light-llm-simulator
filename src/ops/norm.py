@@ -2,6 +2,7 @@
 from src.ops.base import BaseOp
 from conf.common import US_2_SEC
 
+
 class OpAddRmsNorm(BaseOp):
     '''
     Description:
@@ -26,7 +27,8 @@ class OpAddRmsNorm(BaseOp):
         self.bs = bs
         self.seq_len = seq_len
         self.hidden_size = hidden_size
-        super().__init__(name, aichip_config, elem_size)
+        self.static_cost = 5 * US_2_SEC
+        super().__init__(name, aichip_config, elem_size, self.static_cost)
 
     def compute_cost(self):
         # norm(x) = x / sqrt(mean(x^2) + eps)
@@ -39,5 +41,5 @@ class OpAddRmsNorm(BaseOp):
         # gamma: [hidden_size]
         # output tensor y: [bs, seq_len, hidden_size]
         self.bytes = self.elem_size * (self.bs * self.seq_len * self.hidden_size * 3 + self.hidden_size)
-        self.memory_time = 20 * US_2_SEC + self.bytes / self.local_memory_bandwidth
+        self.memory_time = self.bytes / self.local_memory_bandwidth
         return self.memory_time

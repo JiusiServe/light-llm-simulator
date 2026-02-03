@@ -21,7 +21,8 @@ class OpDynamicQuant(BaseOp):
     def __init__(self, name, shape1, shape2, aichip_config, elem_size=2):
         self.shape1 = shape1
         self.shape2 = shape2
-        super().__init__(name, aichip_config, elem_size)
+        self.static_cost = 30 * US_2_SEC
+        super().__init__(name, aichip_config, elem_size, self.static_cost)
 
     def compute_cost(self):
         # 5 times vector operation
@@ -32,5 +33,5 @@ class OpDynamicQuant(BaseOp):
         # input tensor x: [shape1, shape2] fp16
         # output tensor y: [shape1, shape2] int8
         self.bytes = 3 * self.shape1 * self.shape2
-        self.memory_time = 20 * US_2_SEC + self.bytes / self.local_memory_bandwidth
+        self.memory_time = self.bytes / self.local_memory_bandwidth
         return self.memory_time

@@ -83,7 +83,13 @@ class Config:
         self.ffn_bs = self.attn_bs * self.model_config.num_experts_per_tok
         self.attn_die = min_die1
         self.ffn_die = min_die2
-        self.routed_expert_per_die = max(
+        if self.ffn_die >= 64:
+            self.routed_expert_per_die = max(
+                MIN_ROUTED_EXPERT_PER_DIE,
+                math.ceil(self.model_config.n_routed_experts / self.ffn_die) + 1
+            )
+        else:
+            self.routed_expert_per_die = max(
                 MIN_ROUTED_EXPERT_PER_DIE,
                 math.ceil(self.model_config.n_routed_experts / self.ffn_die)
             )

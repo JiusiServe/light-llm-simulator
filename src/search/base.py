@@ -1,6 +1,6 @@
 from typing import Tuple
 from abc import ABC, abstractmethod
-from conf.common import BYTE_2_GB, DTYPE_BF16
+from conf.common import BYTE_2_GB, DTYPE_INT8, DTYPE_BF16
 from conf.model_config import ModelConfig
 from conf.config import Config
 
@@ -37,11 +37,21 @@ class BaseSearch(ABC):
             Add the memory size of the MLP dynamic memory.
         '''
         # KVCache Size
-        kv_size = (
-            attn_bs * self.config.kv_len * 
-            (model_config.kv_lora_rank + model_config.qk_rope_head_dim) * 
+        # KVCache int8
+        # kv_cache = (
+        #     attn_bs * self.config.kv_len * model_config.kv_lora_rank * 
+        #     model_config.num_layers * BYTE_2_GB * DTYPE_INT8
+        # )
+        # KVCache bf16
+        kv_cache = (
+            attn_bs * self.config.kv_len * model_config.kv_lora_rank * 
             model_config.num_layers * BYTE_2_GB * DTYPE_BF16
         )
+        kr_cache = (
+            attn_bs * self.config.kv_len * model_config.qk_rope_head_dim * 
+            model_config.num_layers * BYTE_2_GB * DTYPE_BF16
+        )
+        kv_size = kv_cache + kr_cache
 
         # Attention Static Memory
         if model_config.q_lora_rank == 0:
@@ -134,7 +144,7 @@ class BaseSearch(ABC):
             attn_bs * self.config.kv_len * 
             model_config.kv_heads * 
             model_config.head_size * 
-            model_config.num_layers * BYTE_2_GB * DTYPE_BF16
+            model_config.num_layers * BYTE_2_GB * DTYPE_INT8 * 2
         )
 
         # Attention Static Memory
