@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pnueli Lab | LLM Serving & Predictive Parallelism and Load Balancing Module for JiuSi - Simulator</title>
+    <link rel="stylesheet" href="static/setting.css">
+    <link rel="stylesheet" href="static/vllm_simulation.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div id="header">
+    <img src="static/Huawei-Logo.png" alt="Huawei Logo">
+    <div class="text-container">
+        <h3>Huawei, Tel-Aviv Research Center | Pnueli Lab | LiteAI</h3>
+        <h2 id="main-title">PredSim: LLM Serving Simulator for JiuSi</h2>
+    </div>
+    <img src="static/DPSL-Logo.png" alt="DPSL Logo">
+</div>
+
+<div id="container" class="container">
+    <div id="cost-Model-setting" class="settings-content">
+        <h1>Simulation Settings</h1>
+        <div id="model-configuration" class="section">
+            <h3 class="section-header">
+                <span>Model Configuration</span>
+            </h3>
+
+            <div class="form-group">
+                <label for="model-type">Model Type:</label>
+                <select id="model-type"></select>
+            </div>
+        </div>
+        <div id="dop-hardware-topology" class="section">
+            <h3 class="section-header">
+                <span>Hardware Topology</span>
+                <span class="toggle">▶</span>
+            </h3>
+
+            <div class="section-content">
+                <div class="form-group">
+                    <label for="num-nodes">Number Of Ranks:</label>
+                    <input type="number" id="num-nodes" value="1" min="1">
+                </div>
+
+                <div class="form-group">
+                    <label for="npus-per-node">NPUs Per Rank:</label>
+                    <input type="number" id="npus-per-node" value="8" min="1">
+                </div>
+
+                <div class="form-group">
+                    <label for="npu-type">NPU Type:</label>
+                    <select id="npu-type"></select>
+                    <div id="npu-details"></div>
+                </div>
+            </div>
+        </div>
+        <div id="data-config" class="section">
+            <h3 class="section-header">
+                <span>Data Config</span>
+                <span class="toggle">▶</span>
+            </h3>
+            <div class="section-content">
+                <div class="form-group">
+                    <label for="data-mode">Data Source:</label>
+                    <select id="data-mode" onchange="SettingsApp.toggleDataConfig()">
+                        <option value="random" selected>Random</option>
+                        <option value="real">Real Data</option>
+                    </select>
+                </div>
+                <div id="random-config" style="display:block;">
+                    <div class="form-group">
+                        <label for="random-input-len">Random Input Length:</label>
+                        <input type="number" id="random-input-len" value="1024" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="random-output-len">Random Output Length:</label>
+                        <input type="number" id="random-output-len" value="256" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="random-range-ratio">
+                            Random Range Ratio:
+                            <span class="tooltip">ℹ
+                                <span class="tooltiptext">
+                                    Range ratio for sampling input/output length, used only for random sampling.
+                                    Must be in the range [0, 1) to define a symmetric sampling range:
+                                    [length * (1 - range_ratio), length * (1 + range_ratio)].
+                                </span>
+                            </span>
+                        </label>
+                        <input type="number" id="random-range-ratio" value="0.5" min="1">
+                    </div>
+                </div>
+                <div id="real-data-config" style="display:none;">
+                    <div class="form-group">
+                        <label for="dataset-select">Dataset:</label>
+                        <select id="dataset-select" onchange="SettingsApp.showDatasetInfo()">
+                        </select>
+                    </div>
+
+                    <div id="dataset-details" class="dataset-details"></div>
+                </div>
+                <div class="form-group">
+                    <label for="num-prompts">Num Prompts:</label>
+                    <input type="number" id="num-prompts" value="100" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="rate">Rate:</label>
+                    <input type="number" id="rate" value="15" min="0">
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="chunk-size">Chunk Size:</label>
+            <input type="number" id="chunk-size" value="4096" min="1">
+        </div>
+        <h3 class="section-header"><span>Mode:</span></h3>
+        <div class="form-group">
+            <select id="mode" onchange="">
+                <option value="pp-tp" selected>PP & TP</option>
+                <option value="dp" disabled>DP</option>
+                <option value="disaggregated_pd" disabled>Disaggregated PD</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button  onclick="runCostModel()">Run CostModel</button>
+        </div>
+        <h3 class="section-header"><span>Scheduler Type:</span></h3>
+        <div class="form-group">
+            <select id="scheduler-type" onchange="SettingsApp.toggleQueueRange()">
+                <option value="ewsjf" >ewsjf</option>
+                <option value="fcfs" selected>fcfs</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="queue-range-wrapper">
+            <label for="queue-range">Queue Range:</label>
+            <input type="number" id="queue-range" value="200" min="1">
+        </div>
+        <div class="form-group">
+            <label for="pp">PP:</label>
+            <input type="number" id="pp" value="1" min="1">
+        </div>
+        <div class="form-group">
+            <label for="tp">TP:</label>
+            <input type="number" id="tp" value="1" min="1" disabled>
+        </div>
+         <div class="form-group">
+            <button  onclick="runVLLM()">Run VLLM</button>
+        </div>
+    </div>
+    <div id="results" class="results"></div>
+     <div id="custom-alert-overlay">
+        <div id="custom-alert-box">
+          <div id="custom-alert-message"></div>
+          <button onclick="SettingsApp.closeCustomAlert()">OK</button>
+        </div>
+      </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script src="static/js/setting.js" defer></script>
+<script src="static/js/cost_model.js" defer></script>
+<script src="static/js/vllm_simulation.js" defer></script>
+
+</body>
+

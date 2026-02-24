@@ -1,0 +1,25 @@
+{
+  "datasets": [
+    {
+      "name": "InstructCoder",
+      "dataset_path": "likaixin/InstructCoder",
+      "default_output_len": 256,
+      "max input len":662,
+      "description": "Dataset for general code editing with 114,239 instruction-input-output triplets"
+    },
+    {
+      "name": "MT-Bench",
+      "dataset_path": "philschmid/mt-bench",
+      "default_output_len": 256,
+      "max input len":365,
+      "description": "Single-turn dataset based on MT-Bench benchmark"
+    },
+    {
+      "name": "MLPerf-Llama2",
+      "dataset_path": "mgoin/mlperf-inference-llama2-data",
+      "default_output_len": 256,
+      "max input len":922,
+      "description": "MLPerf Inference dataset with system prompt, question, and reference answer"
+    }
+  ]
+}
