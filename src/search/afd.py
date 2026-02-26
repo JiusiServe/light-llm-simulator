@@ -3,7 +3,7 @@ import logging
 import math
 import os
 from conf.config import Config
-from conf.common import SEC_2_US, MIN_ROUTED_EXPERT_PER_DIE, MEMORY_THRESHOLD_RATIO, MS_2_US, BYTE_2_GB, US_2_MS
+from conf.common import SEC_2_US, MEMORY_THRESHOLD_RATIO, MS_2_US, BYTE_2_GB, US_2_MS
 from src.search.base import BaseSearch
 from src.model.register import get_model, get_attention_family
 
@@ -46,16 +46,21 @@ class AfdSearch(BaseSearch):
                 if self.config.device_type1 == self.config.device_type2:
                     if total_die % self.config.aichip_config1.num_dies_per_node != 0:
                         continue
-                if ffn_die >= 64:
-                    routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                        MIN_ROUTED_EXPERT_PER_DIE,
+                if ffn_die < 64:
+                    # router + shared expert
+                    routed_expert_per_die = (
+                        self.config.model_config.n_shared_experts +
+                        math.ceil(self.config.model_config.n_routed_experts / ffn_die)
+                    )
+                elif ffn_die >= 64 and ffn_die < 128:
+                    # router + shared expert + 1 redundant expert for EPLB
+                    routed_expert_per_die = (
+                        self.config.model_config.n_shared_experts +
                         math.ceil(self.config.model_config.n_routed_experts / ffn_die) + 1
                     )
                 else:
-                    routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                        MIN_ROUTED_EXPERT_PER_DIE,
-                        math.ceil(self.config.model_config.n_routed_experts / ffn_die)
-                    )
+                    # router + 1 redundant experts for EPLB
+                    routed_expert_per_die = math.ceil(self.config.model_config.n_routed_experts / ffn_die) + 1
                 self.config.routed_expert_per_die = routed_expert_per_die
                 self.config.ffn_die = ffn_die
                 self.config.attn_die = attn_die

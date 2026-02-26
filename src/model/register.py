@@ -2,9 +2,11 @@ from conf.model_config import ModelType
 from conf.config import Config
 from src.model.base import BaseModule
 from src.model.deepseekv3_decode import (
+    DeepSeekV3DecodeEmbedding,
     DeepSeekV3DecodeAttn,
     DeepSeekV3DecodeMLP,
     DeepSeekV3DecodeMoe,
+    DeepSeekV3DecodeLMHead
 )
 from src.model.qwen235_decode import (
     Qwen235DecodeAttn,
@@ -31,10 +33,12 @@ def get_model(
     assert(config.model_type in ModelType), f"unsupport model {config.model_type}"
 
     if config.model_type == ModelType.DEEPSEEK_V3:
+        embedding = DeepSeekV3DecodeEmbedding(config)
         attn = DeepSeekV3DecodeAttn(config)
         mlp = DeepSeekV3DecodeMLP(config)
         moe = DeepSeekV3DecodeMoe(config)
-        model = {"attn": attn, "mlp": mlp, "moe": moe}
+        lm_head = DeepSeekV3DecodeLMHead(config)
+        model = {"embedding": embedding, "attn": attn, "mlp": mlp, "moe": moe, "lm_head": lm_head}
     if config.model_type == ModelType.QWEN3_235B:
         attn = Qwen235DecodeAttn(config)
         moe = Qwen235DecodeMoe(config)
