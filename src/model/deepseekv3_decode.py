@@ -6,6 +6,7 @@ from src.ops import (
     OpMlaProlog,
     MLAFlashAttentionInt8,
     OpMatmul,
+    OpBatchMatmul,
     OpTransposeBatchMatmul,
     OpQuantBatchMatmul,
     OpSwiglu,
@@ -16,6 +17,62 @@ from src.ops import (
     OpDynamicQuant,
     OpMoeGating
 )
+
+
+class DeepSeekV3DecodeEmbedding(BaseModule):
+    """
+    Description:
+        The embedding module of the DeepSeekV3-671B model.
+        It is composed of a embedding and a embedding dropout.
+        It can calculate the end-to-end time, compute time and memory time of the embedding.
+    Attributes:
+        attn_bs: The batch size of the embedding.
+        aichip_config: The AI chip configuration.
+    """
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.attn_bs = config.attn_bs
+        self.aichip_config = config.aichip_config1
+        self._build_ops()
+
+    def _build_ops(self):
+        self.embedding = OpBatchMatmul(
+            "embedding",
+            self.attn_bs * self.config.seq_len,
+            self.model_config.vocab_size,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.dropout = OpAddRmsNorm(
+            "embedding_dropout",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.ops = [
+            self.embedding,
+            self.dropout
+        ]
+
+    def _aggregate_times(self):
+        self.e2e_time = (
+            self.embedding.e2e_time +
+            self.dropout.e2e_time
+        )
+        self.compute_time = (
+            self.embedding.compute_time +
+            self.dropout.compute_time
+        )
+        self.memory_time = (
+            self.embedding.memory_time +
+            self.dropout.memory_time
+        )
+        logging.info(
+            f"Embedding Module - embedding: {self.embedding.e2e_time * 1e6:.2f}us, "
+            f"dropout: {self.dropout.e2e_time * 1e6:.2f}us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f}us"
+        )
 
 
 class DeepSeekV3DecodeAttn(BaseModule):
@@ -312,4 +369,60 @@ class DeepSeekV3DecodeMoe(BaseModule):
             f"dispatch_time: {self.dispatch_time * 1e6:.2f}us, "
             f"combine_time: {self.combine_time * 1e6:.2f}us, "
             f"commu_time: {self.commu_time * 1e6:.2f}us"
+        )
+
+
+class DeepSeekV3DecodeLMHead(BaseModule):
+    """
+    Description:
+        The LMHead module of the DeepSeekV3-671B model.
+        It is composed of a norm and a LMHead projection.
+        It can calculate the end-to-end time, compute time and memory time of the LMHead.
+    Attributes:
+        attn_bs: The batch size of the LMHead.
+        aichip_config: The AI chip configuration.
+    """
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.attn_bs = config.attn_bs
+        self.aichip_config = config.aichip_config1
+        self._build_ops()
+
+    def _build_ops(self):
+        self.norm = OpAddRmsNorm(
+            "norm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.lm_head_linear = OpBatchMatmul(
+            "lm_head_linear",
+            self.attn_bs * self.config.seq_len,
+            self.model_config.hidden_size,
+            self.model_config.vocab_size,
+            self.aichip_config
+        )
+        self.ops = [
+            self.norm,
+            self.lm_head_linear
+        ]
+
+    def _aggregate_times(self):
+        self.e2e_time = (
+            self.norm.e2e_time +
+            self.lm_head_linear.e2e_time
+        )
+        self.compute_time = (
+            self.norm.compute_time +
+            self.lm_head_linear.compute_time
+        )
+        self.memory_time = (
+            self.norm.memory_time +
+            self.lm_head_linear.memory_time
+        )
+        logging.info(
+            f"Embedding Module - norm: {self.norm.e2e_time * 1e6:.2f}us, "
+            f"lm_head_linear: {self.lm_head_linear.e2e_time * 1e6:.2f}us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f}us"
         )

@@ -37,7 +37,6 @@ MB_2_BYTE = 1024 ** (2)
 KB_2_BYTE = 1024 ** (1)
 
 # model
-MIN_ROUTED_EXPERT_PER_DIE = 2
 MAX_AVG_RATIO = 1.06
 
 # hardware

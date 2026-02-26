@@ -1,6 +1,5 @@
 from conf.model_config import ModelConfig, ModelType
 from conf.hardware_config import HWConf, DeviceType
-from conf.common import MIN_ROUTED_EXPERT_PER_DIE
 import math
 
 
@@ -83,13 +82,8 @@ class Config:
         self.ffn_bs = self.attn_bs * self.model_config.num_experts_per_tok
         self.attn_die = min_die1
         self.ffn_die = min_die2
-        if self.ffn_die >= 64:
-            self.routed_expert_per_die = max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.model_config.n_routed_experts / self.ffn_die) + 1
-            )
+        if self.ffn_die < 64:
+            self.routed_expert_per_die = math.ceil(self.model_config.n_routed_experts / self.ffn_die)
         else:
-            self.routed_expert_per_die = max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.model_config.n_routed_experts / self.ffn_die)
-            )
+            # router + 1 redundant experts for EPLB
+            self.routed_expert_per_die = math.ceil(self.model_config.n_routed_experts / self.ffn_die) + 1

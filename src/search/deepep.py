@@ -2,7 +2,7 @@ import logging
 import math
 import os
 import pandas as pd
-from conf.common import MIN_ROUTED_EXPERT_PER_DIE, US_2_MS, SEC_2_US, BYTE_2_GB, MEMORY_THRESHOLD_RATIO, MS_2_SEC, MS_2_US
+from conf.common import US_2_MS, SEC_2_US, BYTE_2_GB, MEMORY_THRESHOLD_RATIO, MS_2_SEC, MS_2_US
 from src.search.base import BaseSearch
 from src.model.register import get_model, get_attention_family
 from conf.config import Config
@@ -37,17 +37,23 @@ class DeepEpSearch(BaseSearch):
     def search_bs(self, min_die, max_die, die_step, attn_bs_min, attn_bs_max) -> list[list[float]]:
         perf_deepep_results = []
         for total_die in range(min_die, max_die, die_step):
-            if total_die >= 64:
-                routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                    MIN_ROUTED_EXPERT_PER_DIE,
+            if total_die < 64:
+                # router + shared expert
+                routed_expert_per_die = (
+                    self.config.model_config.n_shared_experts +
+                    math.ceil(self.config.model_config.n_routed_experts / total_die)
+                )
+            elif total_die >= 64 and total_die < 128:
+                # router + shared expert + 1 redundant expert for EPLB
+                routed_expert_per_die = (
+                    self.config.model_config.n_shared_experts +
                     math.ceil(self.config.model_config.n_routed_experts / total_die) + 1
                 )
             else:
-                routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                    MIN_ROUTED_EXPERT_PER_DIE,
-                    math.ceil(self.config.model_config.n_routed_experts / total_die)
-                )
+                # router + 1 redundant experts for EPLB
+                routed_expert_per_die = math.ceil(self.config.model_config.n_routed_experts / total_die) + 1
             for attn_bs in range(attn_bs_min, attn_bs_max):
+            # for attn_bs in [24, 28, 30, 48, 72, 90, 144]:
                 if get_attention_family(self.config.model_type) == "MLA":
                     kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_MLA_memory_size(self.config.model_config, attn_bs)
                 elif get_attention_family(self.config.model_type) == "GQA":
@@ -62,6 +68,12 @@ class DeepEpSearch(BaseSearch):
                 self.config.ffn_die = total_die
                 self.config.routed_expert_per_die = routed_expert_per_die
                 model = get_model(self.config)
+                embedding = model["embedding"]
+                embedding()
+                embedding_time = embedding.e2e_time * SEC_2_US
+                lm_head = model["lm_head"]
+                lm_head()
+                lm_head_time = lm_head.e2e_time * SEC_2_US
                 attn = model["attn"]
                 attn()
                 attn_time = attn.e2e_time * SEC_2_US
@@ -78,7 +90,8 @@ class DeepEpSearch(BaseSearch):
                     max(commu_time, max(attn_time, moe_time)) *
                     self.config.micro_batch_num
                 )
-                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
+                # moe layer time + embedding time + lm head time + MTP layer time
+                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1) + embedding_time + lm_head_time
 
                 # compute memory
                 ffn_dynamic_memory = (

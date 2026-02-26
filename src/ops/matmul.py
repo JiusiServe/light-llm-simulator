@@ -34,6 +34,37 @@ class OpMatmul(BaseOp):
         return self.memory_time
 
 
+class OpBatchMatmul(BaseOp):
+    '''
+    Description:
+        The batch matrix multiplication operation.
+        It is used to multiply two matrices of shape (m, n) and (n, k).
+    Attributes:
+        name: The name of the operation.
+        m: The number of rows of the first matrix.
+        n: The number of columns of the first matrix.
+        k: The number of columns of the second matrix.
+        aichip_config: The hardware configuration.
+    '''
+    def __init__(self, name, m, n, k, aichip_config):
+        self.m = m
+        self.n = n
+        self.k = k
+        self.elem_size = 2
+        super().__init__(name, aichip_config, self.elem_size)
+
+    def compute_cost(self):
+        self.total_computation = 2 * self.m * self.n * self.k
+        self.compute_time = self.total_computation / self.cube_flops_fp16 / 0.8
+        return self.compute_time
+
+    def memory_cost(self):
+        # input type: bf16, output type: bf16
+        self.total_data_movement = 2 * (self.m * self.n + self.n * self.k + self.m * self.k)
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth
+        return self.memory_time
+
+
 class OpQuantBatchMatmul(BaseOp):
     '''
     Description:
