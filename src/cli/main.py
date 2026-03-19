@@ -1,9 +1,7 @@
 import argparse
-import yaml
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-print("sys.path", sys.path)
 from conf.config import Config
 from src.search.afd import AfdSearch
 from src.search.deepep import DeepEpSearch
@@ -15,10 +13,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     Parameters:
         serving_mode: The serving mode of the task.
         model_type: The type of the model.
-        device_type: The type of the device.
+        device_type1: The type of the device1.
+                      For AFD, it is the device type to explore attention module.
+        device_type2: The type of the device2.
+                      For AFD, it is the device type to explore ffn module.
         min_attn_bs: The min number of attention batch size to explore.
         max_attn_bs: The max number of attention batch size to explore.
-        min_die: The min number of die to explore.
+        min_die1: The min number of die to explore for device_type1.
+        max_die1: The max number of die to explore for device_type1.
+        min_die2: The min number of die to explore for device_type2.
+        max_die2: The max number of die to explore for device_type2.
+        die_step1: The step size of the die to explore for device_type1.
+        die_step2: The step size of the die to explore for device_type2.
         max_die: The max number of die to explore.
         die_step: The step size of the die to explore.
         tpot: The target TPOT.
@@ -31,12 +37,56 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     """
     parser.add_argument('--serving_mode', type=str, default="AFD")
     parser.add_argument('--model_type', type=str, default="deepseek-ai/DeepSeek-V3")
-    parser.add_argument('--device_type', type=str, default="Ascend_A3Pod")
+    parser.add_argument(
+        '--device_type1',
+        type=str,
+        default="Ascend_David120",
+        help="For AFD, it is the device type to explore attention module."
+    )
+    parser.add_argument(
+        '--device_type2',
+        type=str,
+        default="Ascend_David100",
+        help="For AFD, it is the device type to explore ffn module."
+    )
     parser.add_argument('--min_attn_bs', type=int, default=2)
     parser.add_argument('--max_attn_bs', type=int, default=1000)
-    parser.add_argument('--min_die', type=int, default=16)
-    parser.add_argument('--max_die', type=int, default=768)
-    parser.add_argument('--die_step', type=int, default=16)
+    parser.add_argument(
+        '--min_die1',
+        type=int,
+        default=8,
+        help="The min number of die to explore for device_type1."
+    )
+    parser.add_argument(
+        '--max_die1',
+        type=int,
+        default=128,
+        help="The max number of die to explore for device_type1."
+    )
+    parser.add_argument(
+        '--min_die2',
+        type=int,
+        default=8,
+        help="The min number of die to explore for device_type2."
+    )
+    parser.add_argument(
+        '--max_die2',
+        type=int,
+        default=128,
+        help="The max number of die to explore for device_type2."
+    )
+    parser.add_argument(
+        '--die_step1',
+        type=int,
+        default=8,
+        help="The step size of the die to explore for device_type1."
+    )
+    parser.add_argument(
+        '--die_step2',
+        type=int,
+        default=8,
+        help="The step size of the die to explore for device_type2."
+    )
     parser.add_argument('--tpot', nargs='+', type=int, default=[20, 50, 70, 100, 150])
     parser.add_argument('--kv_len', nargs='+', type=int, default=[2048, 4096, 8192, 16384, 131072])
     parser.add_argument('--micro_batch_num', nargs='+', type=int, default=[2, 3])
@@ -58,12 +108,16 @@ def run_search(args):
                     config = Config(
                         serving_mode=args.serving_mode,
                         model_type=args.model_type,
-                        device_type=args.device_type,
+                        device_type1=args.device_type1,
+                        device_type2=args.device_type2,
                         min_attn_bs=args.min_attn_bs,
                         max_attn_bs=args.max_attn_bs,
-                        min_die=args.min_die,
-                        max_die=args.max_die,
-                        die_step=args.die_step,
+                        min_die1=args.min_die1,
+                        max_die1=args.max_die1,
+                        min_die2=args.min_die2,
+                        max_die2=args.max_die2,
+                        die_step1=args.die_step1,
+                        die_step2=args.die_step2,
                         tpot=tpot,
                         kv_len=kv_len,
                         micro_batch_num=mbn,
@@ -80,12 +134,16 @@ def run_search(args):
                 config = Config(
                     serving_mode=args.serving_mode,
                     model_type=args.model_type,
-                    device_type=args.device_type,
+                    device_type1=args.device_type1,
+                    device_type2=args.device_type2,
                     min_attn_bs=args.min_attn_bs,
                     max_attn_bs=args.max_attn_bs,
-                    min_die=args.min_die,
-                    max_die=args.max_die,
-                    die_step=args.die_step,
+                    min_die1=args.min_die1,
+                    max_die1=args.max_die1,
+                    min_die2=args.min_die2,
+                    max_die2=args.max_die2,
+                    die_step1=args.die_step1,
+                    die_step2=args.die_step2,
                     tpot=tpot,
                     kv_len=kv_len,
                     micro_batch_num=1,

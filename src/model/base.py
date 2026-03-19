@@ -24,7 +24,6 @@ class BaseModule(ABC):
     ) -> None:
         self.config = config
         self.model_config = config.model_config
-        self.aichip_config = config.aichip_config
 
         self.e2e_time: float = 0.0
         self.compute_time: float = 0.0

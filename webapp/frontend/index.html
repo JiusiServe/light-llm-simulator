@@ -66,12 +66,27 @@
             </select>
           </div>
           <div class="field">
-            <label for="device_type">device_type</label>
-            <select id="device_type">
+            <label for="device_type1">device_type1</label>
+            <select id="device_type1">
               <option value="Ascend_910b2">ASCEND910B2</option>
               <option value="Ascend_910b3">ASCEND910B3</option>
               <option value="Ascend_910b4">ASCEND910B4</option>
               <option value="Ascend_A3Pod">ASCENDA3_Pod</option>
+              <option value="Ascend_David100">ASCENDDAVID100</option>
+              <option value="Ascend_David121">ASCENDDAVID121</option>
+              <option value="Ascend_David120">ASCENDDAVID120</option>
+              <option value="Nvidia_A100_SXM">NvidiaA100SXM</option>
+              <option value="Nvidia_H100_SXM">NvidiaH100SXM</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="device_type2">device_type2</label>
+            <select id="device_type2">
+              <option value="Ascend_910b2">ASCEND910B2</option>
+              <option value="Ascend_910b3">ASCEND910B3</option>
+              <option value="Ascend_910b4">ASCEND910B4</option>
+              <option value="Ascend_A3Pod">ASCENDA3_Pod</option>
+              <option value="Ascend_David100">ASCENDDAVID100</option>
               <option value="Ascend_David121">ASCENDDAVID121</option>
               <option value="Ascend_David120">ASCENDDAVID120</option>
               <option value="Nvidia_A100_SXM">NvidiaA100SXM</option>
@@ -87,16 +102,28 @@
             <input id="max_attn_bs" type="number" value="1000" />
           </div>
           <div class="field">
-            <label>min_die</label>
-            <input id="min_die" type="number" value="16" />
+            <label>min_die1</label>
+            <input id="min_die1" type="number" value="16" />
           </div>
           <div class="field">
-            <label>max_die</label>
-            <input id="max_die" type="number" value="768" />
+            <label>max_die1</label>
+            <input id="max_die1" type="number" value="288" />
           </div>
           <div class="field">
-            <label>die_step</label>
-            <input id="die_step" type="number" value="16" />
+            <label>die_step1</label>
+            <input id="die_step1" type="number" value="16" />
+          </div>
+          <div class="field">
+            <label>min_die2</label>
+            <input id="min_die2" type="number" value="16" />
+          </div>
+          <div class="field">
+            <label>max_die2</label>
+            <input id="max_die2" type="number" value="288" />
+          </div>
+          <div class="field">
+            <label>die_step2</label>
+            <input id="die_step2" type="number" value="16" />
           </div>
           <div class="field">
             <label>tpot (comma separated)</label>
@@ -135,8 +162,10 @@
       <h2>Configuration</h2>
       <h3> Model Configuration</h3>
       <div id="model_config"></div>
-      <h3> Hardware Configuration</h3>
-      <div id="hardware_config"></div>
+      <h3> Hardware Configuration1</h3>
+      <div id="hardware_config1"></div>
+      <h3> Hardware Configuration2</h3>
+      <div id="hardware_config2"></div>
     </div>
 
     <div id="csv_results_box">
@@ -152,12 +181,28 @@
           </div>
 
           <div class="form_field">
-            <label for="results_device_type">device_type</label>
-            <select id="results_device_type">
+            <label for="results_device_type1">device_type1</label>
+            <select id="results_device_type1">
               <option value="ASCEND910B2">ASCEND910B2</option>
               <option value="ASCEND910B3">ASCEND910B3</option>
               <option value="ASCEND910B4">ASCEND910B4</option>
               <option value="ASCENDA3_Pod">ASCENDA3_Pod</option>
+              <option value="ASCENDDAVID100">ASCENDDAVID100</option>
+              <option value="ASCENDDAVID121">ASCENDDAVID121</option>
+              <option value="ASCENDDAVID120">ASCENDDAVID120</option>
+              <option value="NvidiaA100SXM">NvidiaA100SXM</option>
+              <option value="NvidiaH100SXM">NvidiaH100SXM</option>
+            </select>
+          </div>
+
+          <div class="form_field">
+            <label for="results_device_type2">device_type2</label>
+            <select id="results_device_type2">
+              <option value="ASCEND910B2">ASCEND910B2</option>
+              <option value="ASCEND910B3">ASCEND910B3</option>
+              <option value="ASCEND910B4">ASCEND910B4</option>
+              <option value="ASCENDA3_Pod">ASCENDA3_Pod</option>
+              <option value="ASCENDDAVID100">ASCENDDAVID100</option>
               <option value="ASCENDDAVID121">ASCENDDAVID121</option>
               <option value="ASCENDDAVID120">ASCENDDAVID120</option>
               <option value="NvidiaA100SXM">NvidiaA100SXM</option>
@@ -189,8 +234,13 @@
           </div>
 
           <div class="form_field">
-            <label for="results_total_die">Total Die:</label>
-            <input id="results_total_die" type="number" value="128" />
+            <label for="results_total_die1">Total Die1:</label>
+            <input id="results_total_die1" type="number" value="128" />
+          </div>
+
+          <div class="form_field">
+            <label for="results_total_die2">Total Die2:</label>
+            <input id="results_total_die2" type="number" value="128" />
           </div>
 
           <button id="fetch_results">Fetch Results</button>
@@ -231,15 +281,18 @@
 
   async function fetchConfigurations() {
     const modelType = document.getElementById("model_type").value;
-    const deviceType = document.getElementById("device_type").value;
+    const deviceType1 = document.getElementById("device_type1").value;
+    const deviceType2 = document.getElementById("device_type2").value;
     try {
-      const [modelResponse, hardwareResponse] = await Promise.all([
+      const [modelResponse, hardwareResponse1, hardwareResponse2] = await Promise.all([
         fetch(`${apiBase}/model_config?model_type=${encodeURIComponent(modelType)}`),
-        fetch(`${apiBase}/hardware_config?device_type=${encodeURIComponent(deviceType)}`)
+        fetch(`${apiBase}/hardware_config?device_type=${encodeURIComponent(deviceType1)}`),
+        fetch(`${apiBase}/hardware_config?device_type=${encodeURIComponent(deviceType2)}`)
       ]);
-      if (modelResponse.ok && hardwareResponse.ok) {
+      if (modelResponse.ok && hardwareResponse1.ok && hardwareResponse2.ok) {
         const modelConfig = await modelResponse.json();
-        const hardwareConfig = await hardwareResponse.json();
+        const hardwareConfig1 = await hardwareResponse1.json();
+        const hardwareConfig2 = await hardwareResponse2.json();
         // render model config (subset)
         document.getElementById("model_config").innerHTML = `
           <p><strong>model_type:</strong> ${modelType}</p>
@@ -267,19 +320,33 @@
           <p><strong>v_head_dim:</strong> ${modelConfig.v_head_dim ?? 0}</p>
         `;
         const constants = await fetchConstants();
-        document.getElementById("hardware_config").innerHTML = `
-          <p><strong>Device Type:</strong> ${deviceType}</p>
-          <p><strong>num_dies_per_node:</strong> ${hardwareConfig.num_dies_per_node ?? ""}</p>
-          <p><strong>HBM Capacity:</strong> ${hardwareConfig.aichip_memory ? (hardwareConfig.aichip_memory / (constants.GB_2_BYTE)).toFixed(2) + " GB" : ""}</p>
-          <p><strong>Intra-node Bandwidth:</strong> ${hardwareConfig.intra_node_bandwidth ? (hardwareConfig.intra_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
-          <p><strong>Inter-node Bandwidth:</strong> ${hardwareConfig.inter_node_bandwidth ? (hardwareConfig.inter_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
-          <p><strong>Local Memory Bandwidth:</strong> ${hardwareConfig.local_memory_bandwidth ? (hardwareConfig.local_memory_bandwidth / (constants.TB_2_BYTE)).toFixed(2) + " TB/s" : ""}</p>
-          <p><strong>BWSIO Memory Bandwidth:</strong> ${hardwareConfig.bwsio_memory_bandwidth ? (hardwareConfig.bwsio_memory_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
-          <p><strong>Onchip Buffer Size:</strong> ${hardwareConfig.onchip_buffer_size ? (hardwareConfig.onchip_buffer_size / (constants.MB_2_BYTE)).toFixed(2) + " MB" : ""}</p>
-          <p><strong>Cube FLOPS FP16:</strong> ${hardwareConfig.cube_flops_fp16 ? (hardwareConfig.cube_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
-          <p><strong>Cube FLOPS INT8:</strong> ${hardwareConfig.cube_flops_int8 ? (hardwareConfig.cube_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
-          <p><strong>Vector FLOPS FP16:</strong> ${hardwareConfig.vector_flops_fp16 ? (hardwareConfig.vector_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
-          <p><strong>Vector FLOPS INT8:</strong> ${hardwareConfig.vector_flops_int8 ? (hardwareConfig.vector_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+        document.getElementById("hardware_config1").innerHTML = `
+          <p><strong>Device Type1:</strong> ${deviceType1}</p>
+          <p><strong>num_dies_per_node:</strong> ${hardwareConfig1.num_dies_per_node ?? ""}</p>
+          <p><strong>HBM Capacity:</strong> ${hardwareConfig1.aichip_memory ? (hardwareConfig1.aichip_memory / (constants.GB_2_BYTE)).toFixed(2) + " GB" : ""}</p>
+          <p><strong>Intra-node Bandwidth:</strong> ${hardwareConfig1.intra_node_bandwidth ? (hardwareConfig1.intra_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Inter-node Bandwidth:</strong> ${hardwareConfig1.inter_node_bandwidth ? (hardwareConfig1.inter_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Local Memory Bandwidth:</strong> ${hardwareConfig1.local_memory_bandwidth ? (hardwareConfig1.local_memory_bandwidth / (constants.TB_2_BYTE)).toFixed(2) + " TB/s" : ""}</p>
+          <p><strong>BWSIO Memory Bandwidth:</strong> ${hardwareConfig1.bwsio_memory_bandwidth ? (hardwareConfig1.bwsio_memory_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Onchip Buffer Size:</strong> ${hardwareConfig1.onchip_buffer_size ? (hardwareConfig1.onchip_buffer_size / (constants.MB_2_BYTE)).toFixed(2) + " MB" : ""}</p>
+          <p><strong>Cube FLOPS FP16:</strong> ${hardwareConfig1.cube_flops_fp16 ? (hardwareConfig1.cube_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Cube FLOPS INT8:</strong> ${hardwareConfig1.cube_flops_int8 ? (hardwareConfig1.cube_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Vector FLOPS FP16:</strong> ${hardwareConfig1.vector_flops_fp16 ? (hardwareConfig1.vector_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Vector FLOPS INT8:</strong> ${hardwareConfig1.vector_flops_int8 ? (hardwareConfig1.vector_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+        `;
+        document.getElementById("hardware_config2").innerHTML = `
+          <p><strong>Device Type2:</strong> ${deviceType2}</p>
+          <p><strong>num_dies_per_node:</strong> ${hardwareConfig2.num_dies_per_node ?? ""}</p>
+          <p><strong>HBM Capacity:</strong> ${hardwareConfig2.aichip_memory ? (hardwareConfig2.aichip_memory / (constants.GB_2_BYTE)).toFixed(2) + " GB" : ""}</p>
+          <p><strong>Intra-node Bandwidth:</strong> ${hardwareConfig2.intra_node_bandwidth ? (hardwareConfig2.intra_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Inter-node Bandwidth:</strong> ${hardwareConfig2.inter_node_bandwidth ? (hardwareConfig2.inter_node_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Local Memory Bandwidth:</strong> ${hardwareConfig2.local_memory_bandwidth ? (hardwareConfig2.local_memory_bandwidth / (constants.TB_2_BYTE)).toFixed(2) + " TB/s" : ""}</p>
+          <p><strong>BWSIO Memory Bandwidth:</strong> ${hardwareConfig2.bwsio_memory_bandwidth ? (hardwareConfig2.bwsio_memory_bandwidth / (constants.GB_2_BYTE)).toFixed(2) + " GB/s" : ""}</p>
+          <p><strong>Onchip Buffer Size:</strong> ${hardwareConfig2.onchip_buffer_size ? (hardwareConfig2.onchip_buffer_size / (constants.MB_2_BYTE)).toFixed(2) + " MB" : ""}</p>
+          <p><strong>Cube FLOPS FP16:</strong> ${hardwareConfig2.cube_flops_fp16 ? (hardwareConfig2.cube_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Cube FLOPS INT8:</strong> ${hardwareConfig2.cube_flops_int8 ? (hardwareConfig2.cube_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Vector FLOPS FP16:</strong> ${hardwareConfig2.vector_flops_fp16 ? (hardwareConfig2.vector_flops_fp16 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
+          <p><strong>Vector FLOPS INT8:</strong> ${hardwareConfig2.vector_flops_int8 ? (hardwareConfig2.vector_flops_int8 / (constants.TB_2_BYTE)).toFixed(2) + " TFLOPS" : ""}</p>
         `;
       } else {
         console.error("Failed to fetch configuration data", modelResponse.status, hardwareResponse.status);
@@ -290,18 +357,23 @@
   async function init() {
     await fetchConfigurations();
     document.getElementById("model_type").addEventListener("change", fetchConfigurations);
-    document.getElementById("device_type").addEventListener("change", fetchConfigurations);
+    document.getElementById("device_type1").addEventListener("change", fetchConfigurations);
+    document.getElementById("device_type2").addEventListener("change", fetchConfigurations);
 
     document.getElementById("run").addEventListener("click", async () => {
       const payload = {
         serving_mode: document.getElementById("serving_mode").value,
         model_type: document.getElementById("model_type").value,
-        device_type: document.getElementById("device_type").value,
+        device_type1: document.getElementById("device_type1").value,
+        device_type2: document.getElementById("device_type2").value,
         min_attn_bs: Number(document.getElementById("min_attn_bs").value),
         max_attn_bs: Number(document.getElementById("max_attn_bs").value),
-        min_die: Number(document.getElementById("min_die").value),
-        max_die: Number(document.getElementById("max_die").value),
-        die_step: Number(document.getElementById("die_step").value),
+        min_die1: Number(document.getElementById("min_die1").value),
+        max_die1: Number(document.getElementById("max_die1").value),
+        min_die2: Number(document.getElementById("min_die2").value),
+        max_die2: Number(document.getElementById("max_die2").value),
+        die_step1: Number(document.getElementById("die_step1").value),
+        die_step2: Number(document.getElementById("die_step2").value),
         tpot: parseList(document.getElementById("tpot").value),
         kv_len: parseList(document.getElementById("kv_len").value),
         micro_batch_num: parseList(document.getElementById("micro_batch_num").value),
@@ -327,14 +399,16 @@
     });
 
     document.getElementById("fetch_results").addEventListener("click", async () => {
-      const deviceType = document.getElementById("results_device_type").value;
+      const deviceType1 = document.getElementById("results_device_type1").value;
+      const deviceType2 = document.getElementById("results_device_type2").value;
       const modelType = document.getElementById("results_model_type").value;
       const tpot = Number(document.getElementById("results_tpot").value);
       const kvLen = Number(document.getElementById("results_kv_len").value);
       const servingMode = document.getElementById("results_serving_mode").value;
       const microBatchNum = Number(document.getElementById("results_micro_batch_num").value);
-      const total_die = Number(document.getElementById("results_total_die").value);
-      const url = `${apiBase}/fetch_csv_results?device_type=${encodeURIComponent(deviceType)}&model_type=${encodeURIComponent(modelType)}&tpot=${tpot}&kv_len=${kvLen}&serving_mode=${encodeURIComponent(servingMode)}&micro_batch_num=${microBatchNum}${total_die ? `&total_die=${total_die}` : ""}`;
+      const total_die1 = Number(document.getElementById("results_total_die1").value);
+      const total_die2 = Number(document.getElementById("results_total_die2").value);
+      const url = `${apiBase}/fetch_csv_results?device_type1=${encodeURIComponent(deviceType1)}&device_type2=${encodeURIComponent(deviceType2)}&model_type=${encodeURIComponent(modelType)}&tpot=${tpot}&kv_len=${kvLen}&serving_mode=${encodeURIComponent(servingMode)}&micro_batch_num=${microBatchNum}${total_die1 ? `&total_die1=${total_die1}` : ""}${total_die2 ? `&total_die2=${total_die2}` : ""}`;
       try {
         const r = await fetch(url);
         if (!r.ok) {
@@ -348,7 +422,7 @@
         console.error(e);
         document.getElementById("results_table").innerText = "Fetch failed";
       }
-      showResults(deviceType, modelType, total_die, tpot, kvLen);
+      showResults(deviceType1, deviceType2, modelType, total_die1, total_die2, tpot, kvLen);
     });
   }
 
@@ -387,9 +461,9 @@
     }, 3000);
   }
 
-  async function showResults(deviceType, modelType, total_die, tpot, kv_len) {
+  async function showResults(deviceType1, deviceType2, modelType, total_die1, total_die2, tpot, kv_len) {
     try {
-      const r = await fetch(`${apiBase}/results?device_type=${encodeURIComponent(deviceType)}&model_type=${encodeURIComponent(modelType)}&${total_die ? `&total_die=${total_die}` : ""}&${tpot ? `&tpot=${tpot}` : ""}&${kv_len ? `&kv_len=${kv_len}` : ""}`);
+      const r = await fetch(`${apiBase}/results?device_type1=${encodeURIComponent(deviceType1)}&device_type2=${encodeURIComponent(deviceType2)}&model_type=${encodeURIComponent(modelType)}&${total_die1 ? `&total_die1=${total_die1}` : ""}&${total_die2 ? `&total_die2=${total_die2}` : ""}&${tpot ? `&tpot=${tpot}` : ""}&${kv_len ? `&kv_len=${kv_len}` : ""}`);
       const j = await r.json();
       const throughputImagesDiv = document.getElementById("throughput_images");
       const pipelineImagesDiv = document.getElementById("pipeline_images");
