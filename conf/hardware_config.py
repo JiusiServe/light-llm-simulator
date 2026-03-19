@@ -114,19 +114,19 @@ class HWConf:
                 num_dies_per_node=8, aichip_memory=128 * GB_2_BYTE, cube_flops_fp16=445.6 * TB_2_BYTE,
                 cube_flops_int8=891.9 * TB_2_BYTE, vector_flops_fp16=55.7 * TB_2_BYTE,
                 vector_flops_int8=111.4 * TB_2_BYTE, intra_node_bandwidth=224 * GB_2_BYTE,
-                inter_node_bandwidth=50 * GB_2_BYTE, local_memory_bandwidth=1.6 * TB_2_BYTE,
+                inter_node_bandwidth=224 * GB_2_BYTE, local_memory_bandwidth=1.6 * TB_2_BYTE,
                 bwsio_memory_bandwidth = 224 * GB_2_BYTE, onchip_buffer_size=192 * MB_2_BYTE),
             DeviceType.ASCENDDAVID121: cfg(
                 num_dies_per_node=8, aichip_memory=192 * GB_2_BYTE, cube_flops_fp16=917.5 * TB_2_BYTE,
                 cube_flops_int8=1835 * TB_2_BYTE, vector_flops_fp16=57.3 * TB_2_BYTE,
                 vector_flops_int8=114.7 * TB_2_BYTE, intra_node_bandwidth=1008 * GB_2_BYTE,
-                inter_node_bandwidth=50 * GB_2_BYTE, local_memory_bandwidth=8.4 * TB_2_BYTE,
+                inter_node_bandwidth=1008 * GB_2_BYTE, local_memory_bandwidth=8.4 * TB_2_BYTE,
                 bwsio_memory_bandwidth = 1008 * GB_2_BYTE, onchip_buffer_size=192 * MB_2_BYTE),
             DeviceType.ASCENDDAVID120: cfg(
                 num_dies_per_node=8, aichip_memory=144 * GB_2_BYTE, cube_flops_fp16=445.6 * TB_2_BYTE,
                 cube_flops_int8=891.3 * TB_2_BYTE, vector_flops_fp16=55.7 * TB_2_BYTE,
                 vector_flops_int8=111.4 * TB_2_BYTE, intra_node_bandwidth=224 * GB_2_BYTE,
-                inter_node_bandwidth=50 * GB_2_BYTE, local_memory_bandwidth=4.2 * TB_2_BYTE,
+                inter_node_bandwidth=224 * GB_2_BYTE, local_memory_bandwidth=4.2 * TB_2_BYTE,
                 bwsio_memory_bandwidth = 224 * GB_2_BYTE, onchip_buffer_size=192 * MB_2_BYTE),
             DeviceType.NvidiaA100SXM: cfg(
                 num_dies_per_node=8, aichip_memory=80 * GB_2_BYTE, cube_flops_fp16=312 * TB_2_BYTE,
