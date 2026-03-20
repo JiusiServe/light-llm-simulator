@@ -144,13 +144,6 @@ class AfdSearch(BaseSearch):
                     max(attn_time, moe_time) * self.config.micro_batch_num
                 )
 
-                latency_constraint = (
-                    self.config.tpot * MS_2_US * (1 + self.config.multi_token_ratio) / 
-                    self.config.model_config.num_layers
-                )
-                if e2e_time_per_moe_layer > latency_constraint:
-                    continue
-
                 e2e_time = (
                     e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace + 
                     e2e_time_per_moe_layer * self.config.model_config.num_moe_layers

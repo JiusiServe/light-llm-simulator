@@ -58,6 +58,7 @@ def create_gantt_chart(mbn, attn_time, dispatch_time, moe_time, combine_time, to
         save_path = save_dir + file_name.split('.')[0] + '-' + title + '.png'
         ax.set_title('AFD-mbn3-' + title)
     fig.savefig(save_path)
+    plt.close(fig)
 
 
 def main():
@@ -67,15 +68,34 @@ def main():
     for mbn in [1, 2, 3]:
         if mbn == 1:
             mbn_path = 'data/deepep/' + args.file_name
+            if not os.path.exists(mbn_path):
+                print(f"Skipping mbn={mbn}: file not found: {mbn_path}")
+                continue
+            df = pd.read_csv(mbn_path)
+            for index, row in df.iterrows():
+                attn_time, dispatch_time, moe_time, combine_time = row['attn_time(us)'], row['dispatch_time(us)'], row['moe_time(us)'], row['combine_time(us)']
+                attn_bs, ffn_bs, total_die, throughput = row['attn_bs'], row['ffn_bs'], row['total_die'], row['throughput(tokens/die/s)']
+                create_gantt_chart(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name)
         elif mbn == 2:
             mbn_path = 'data/afd/mbn2/best/' + args.file_name
+            if not os.path.exists(mbn_path):
+                print(f"Skipping mbn={mbn}: file not found: {mbn_path}")
+                continue
+            df = pd.read_csv(mbn_path)
+            for index, row in df.iterrows():
+                attn_time, dispatch_time, moe_time, combine_time = row['attn_time(us)'], row['dispatch_time(us)'], row['moe_time(us)'], row['combine_time(us)']
+                attn_bs, ffn_bs, total_die, throughput = row['attn_bs'], row['ffn_bs'], row['total_die'], row['throughput(tokens/die/s)']
+                create_gantt_chart(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name)
         elif mbn == 3:
             mbn_path = 'data/afd/mbn3/best/' + args.file_name
-        df = pd.read_csv(mbn_path)
-        for index, row in df.iterrows():
-            attn_time, dispatch_time, moe_time, combine_time = row['attn_time(us)'], row['dispatch_time(us)'], row['moe_time(us)'], row['combine_time(us)']
-            attn_bs, ffn_bs, total_die, throughput = row['attn_bs'], row['ffn_bs'], row['total_die'], row['throughput(tokens/die/s)']
-            create_gantt_chart(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name)
+            if not os.path.exists(mbn_path):
+                print(f"Skipping mbn={mbn}: file not found: {mbn_path}")
+                continue
+            df = pd.read_csv(mbn_path)
+            for index, row in df.iterrows():
+                attn_time, dispatch_time, moe_time, combine_time = row['attn_time(us)'], row['dispatch_time(us)'], row['moe_time(us)'], row['combine_time(us)']
+                attn_bs, ffn_bs, total_die, throughput = row['attn_bs'], row['ffn_bs'], row['total_die'], row['throughput(tokens/die/s)']
+                create_gantt_chart(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name)
 
 if __name__ == "__main__":
     main()

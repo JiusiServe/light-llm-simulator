@@ -1,5 +1,4 @@
 import argparse
-import yaml
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -7,6 +6,8 @@ print("sys.path", sys.path)
 from conf.config import Config
 from src.search.afd import AfdSearch
 from src.search.deepep import DeepEpSearch
+from conf.model_config import ModelType
+from conf.hardware_config import DeviceType
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -105,9 +106,29 @@ def main():
     args = parser.parse_args()
     run_search(args)
 
+    import subprocess
+    throughput_cmd = [
+        "python", "src/visualization/throughput.py",
+        "--model_type", args.model_type,
+        "--device_type", args.device_type,
+        "--min_die", str(args.min_die),
+        "--max_die", str(args.max_die),
+    ]
+    throughput_cmd.extend(["--micro_batch_num", "2", "3"])
+    throughput_cmd.extend(["--tpot_list"] + [str(t) for t in args.tpot])
+    throughput_cmd.extend(["--kv_len_list"] + [str(k) for k in args.kv_len])
+    throughput_cmd.extend(["--total_die"] + [str(t) for t in range(args.min_die, args.max_die + 1, args.die_step)])
+    subprocess.run(throughput_cmd)
+
+    for tpot in args.tpot:
+        for kv_len in args.kv_len:
+            file_name = f"{DeviceType(args.device_type).name}-{ModelType(args.model_type).name}-tpot{tpot}-kv_len{kv_len}.csv"
+            pipeline_cmd = [
+                "python", "src/visualization/pipeline.py",
+                "--file_name", file_name
+            ]
+            subprocess.run(pipeline_cmd)
+
 
 if __name__ == "__main__":
     main()
-    import subprocess
-    subprocess.run(["python", "src/visualization/throughput.py"])
-    subprocess.run(["python", "src/visualization/pipeline.py"])
