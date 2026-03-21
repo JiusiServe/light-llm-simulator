@@ -117,9 +117,8 @@
 
 <script>
 import { ref, reactive, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
-
-const API_BASE = '/api';
-const STORAGE_KEY = 'llm-sim-csv-selection';
+import { useApi } from '../../composables/useApi.js';
+import { useStore } from '../../composables/useStore.js';
 
 const DEFAULT_PARAMS = {
   deviceType: 'ASCENDA3_Pod',
@@ -152,45 +151,14 @@ const DIE_OPTIONS = [64, 128, 256, 384, 512, 768];
 const TPOT_OPTIONS = [20, 50, 70, 100, 150];
 const KV_LEN_OPTIONS = [2048, 4096, 8192, 16384, 131072];
 
-function loadSelection() {
-  if (typeof window === 'undefined') {
-    return { ...DEFAULT_PARAMS };
-  }
-
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored ? { ...DEFAULT_PARAMS, ...JSON.parse(stored) } : { ...DEFAULT_PARAMS };
-  } catch {
-    return { ...DEFAULT_PARAMS };
-  }
-}
-
-function saveSelection(selection) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const existing = loadSelection();
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...existing,
-      ...selection
-    })
-  );
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-  return await response.json();
-}
-
 export default {
   setup() {
-    const params = reactive(loadSelection());
+    const api = useApi();
+    const { getCsvSelection, setCsvSelection } = useStore();
+    const params = reactive({
+      ...DEFAULT_PARAMS,
+      ...getCsvSelection()
+    });
     const throughputImages = ref([]);
     const pipelineImages = ref([]);
     const loading = ref(false);
@@ -207,18 +175,16 @@ export default {
       missingImages.clear();
 
       try {
-        const query = new URLSearchParams({
+        const data = await api.getResults({
           device_type: params.deviceType,
           model_type: params.modelType,
           total_die: String(params.totalDie),
           tpot: String(params.tpot),
           kv_len: String(params.kvLen)
         });
-
-        const data = await fetchJson(`${API_BASE}/results?${query}`);
         throughputImages.value = Array.isArray(data.throughput_images) ? data.throughput_images : [];
         pipelineImages.value = Array.isArray(data.pipeline_images) ? data.pipeline_images : [];
-        saveSelection({
+        setCsvSelection({
           servingMode: params.servingMode || 'AFD',
           deviceType: params.deviceType,
           modelType: params.modelType,
@@ -237,6 +203,10 @@ export default {
     };
 
     onMounted(() => {
+      Object.assign(params, {
+        ...DEFAULT_PARAMS,
+        ...getCsvSelection()
+      });
       loadCharts();
     });
 

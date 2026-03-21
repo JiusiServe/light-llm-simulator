@@ -64,16 +64,22 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+import { ref, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
 import { useApi } from '../../composables/useApi.js';
 
 const GB_2_BYTE = 1073741824;
 const MB_2_BYTE = 1048576;
 const TB_2_BYTE = 1099511627776;
-const DEVICE_TYPE = 'Ascend_A3Pod';
+const DEFAULT_DEVICE_TYPE = 'Ascend_A3Pod';
 
 export default {
-  setup() {
+  props: {
+    deviceType: {
+      type: String,
+      default: DEFAULT_DEVICE_TYPE
+    }
+  },
+  setup(props) {
     const api = useApi();
 
     const config = ref(null);
@@ -90,8 +96,8 @@ export default {
       error.value = null;
 
       try {
-        const data = await api.getHardwareConfig(DEVICE_TYPE);
-        config.value = Object.assign({ device_type: DEVICE_TYPE }, data);
+        const data = await api.getHardwareConfig(props.deviceType);
+        config.value = Object.assign({ device_type: props.deviceType }, data);
       } catch (err) {
         error.value = err && err.message ? err.message : 'Failed to load hardware config';
       } finally {
@@ -99,7 +105,7 @@ export default {
       }
     };
 
-    onMounted(loadConfig);
+    watch(() => props.deviceType, loadConfig, { immediate: true });
 
     return {
       config,

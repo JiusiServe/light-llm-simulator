@@ -132,7 +132,7 @@ const DEVICE_OPTIONS = [
 export default {
   setup() {
     const api = useApi();
-    const { setTab, addRun: addToHistory } = useStore();
+    const { addRun: addToHistory } = useStore();
 
     const form = ref({
       serving_mode: 'AFD',
@@ -179,7 +179,6 @@ export default {
 
         const result = await api.startRun(payload);
         addToHistory(result.run_id, payload);
-        setTab('results');
       } catch (err) {
         error.value = err && err.message ? err.message : 'Failed to start run';
       } finally {

@@ -67,7 +67,7 @@
     </div>
 
     <p class="selection-note">
-      Uses exact enum names for backend file lookups and stores the current selection locally for chart handoff.
+      Uses exact enum names for backend file lookups and keeps the current selection in shared app state.
     </p>
 
     <div v-if="error" class="error-banner">
@@ -78,9 +78,8 @@
 
 <script>
 import { ref, watch, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
-
-const API_BASE = '/api';
-const STORAGE_KEY = 'llm-sim-csv-selection';
+import { useApi } from '../../composables/useApi.js';
+import { useStore } from '../../composables/useStore.js';
 
 const DEFAULT_SELECTION = {
   servingMode: 'AFD',
@@ -122,22 +121,6 @@ function createSelection() {
   return { ...DEFAULT_SELECTION };
 }
 
-function loadStoredSelection() {
-  if (typeof window === 'undefined') {
-    return createSelection();
-  }
-
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      return createSelection();
-    }
-    return normalizeSelection({ ...DEFAULT_SELECTION, ...JSON.parse(stored) }, true);
-  } catch {
-    return createSelection();
-  }
-}
-
 function normalizeSelection(selection, includeTotalDie = false) {
   const normalized = {
     servingMode: selection.servingMode || DEFAULT_SELECTION.servingMode,
@@ -155,40 +138,22 @@ function normalizeSelection(selection, includeTotalDie = false) {
   return normalized;
 }
 
-function persistSelection(selection) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const current = loadStoredSelection();
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...current,
-      ...normalizeSelection(selection)
-    })
-  );
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-  return await response.json();
-}
-
 export default {
   emits: ['csv-loaded'],
   setup(props, { emit }) {
-    const selection = ref(loadStoredSelection());
+    const api = useApi();
+    const { getCsvSelection, setCsvSelection } = useStore();
+    const selection = ref({
+      ...createSelection(),
+      ...normalizeSelection(getCsvSelection(), true)
+    });
     const isLoading = ref(false);
     const error = ref(null);
 
     watch(
       selection,
       (value) => {
-        persistSelection(value);
+        setCsvSelection(normalizeSelection(value, true));
       },
       { deep: true }
     );
@@ -199,7 +164,7 @@ export default {
 
       const params = normalizeSelection(selection.value);
       try {
-        const query = new URLSearchParams({
+        const data = await api.fetchCsvResults({
           serving_mode: params.servingMode,
           device_type: params.deviceType,
           model_type: params.modelType,
@@ -207,8 +172,7 @@ export default {
           kv_len: String(params.kvLen),
           micro_batch_num: String(params.microBatchNum)
         });
-        const data = await fetchJson(`${API_BASE}/fetch_csv_results?${query}`);
-        persistSelection(params);
+        setCsvSelection(params);
         emit('csv-loaded', data || []);
       } catch (err) {
         if (String(err.message).includes('404')) {

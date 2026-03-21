@@ -60,13 +60,19 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+import { ref, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
 import { useApi } from '../../composables/useApi.js';
 
-const MODEL_TYPE = 'deepseek-ai/DeepSeek-V3';
+const DEFAULT_MODEL_TYPE = 'deepseek-ai/DeepSeek-V3';
 
 export default {
-  setup() {
+  props: {
+    modelType: {
+      type: String,
+      default: DEFAULT_MODEL_TYPE
+    }
+  },
+  setup(props) {
     const api = useApi();
 
     const config = ref(null);
@@ -78,8 +84,8 @@ export default {
       error.value = null;
 
       try {
-        const data = await api.getModelConfig(MODEL_TYPE);
-        config.value = Object.assign({ model_type: MODEL_TYPE }, data);
+        const data = await api.getModelConfig(props.modelType);
+        config.value = Object.assign({ model_type: props.modelType }, data);
       } catch (err) {
         error.value = err && err.message ? err.message : 'Failed to load model config';
       } finally {
@@ -87,7 +93,7 @@ export default {
       }
     };
 
-    onMounted(loadConfig);
+    watch(() => props.modelType, loadConfig, { immediate: true });
 
     return { config, loading, error };
   }

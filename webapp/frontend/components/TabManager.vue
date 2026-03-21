@@ -15,7 +15,8 @@
       <RunExperimentTab v-if="currentTab === 'run'" />
       <ConfigurationTab v-else-if="currentTab === 'config'" />
       <ResultsTab v-else-if="currentTab === 'results'" />
-      <VisualizationsTab v-else />
+      <VisualizationsTab v-else-if="currentTab === 'visualizations'" />
+      <div v-else class="muted-state">Unknown tab selection.</div>
     </div>
   </div>
 </template>
