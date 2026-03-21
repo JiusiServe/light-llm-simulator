@@ -117,16 +117,29 @@ def get_logs(run_id: str):
 
 @api.get("/results")
 def list_results(model_type: str, device_type: str, total_die: int, tpot: int, kv_len: int):
-    image1 = f"/data/images/throughput/{device_type}-{model_type}-mbn2-total_die{total_die}.png"
-    image2 = f"/data/images/throughput/{device_type}-{model_type}-mbn3-total_die{total_die}.png"
-    image3 = f"/data/images/throughput/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.png"
-    image4 = f"/data/images/pipeline/mbn2/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
-    image5 = f"/data/images/pipeline/mbn3/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
-    image6 = f"/data/images/pipeline/deepep/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png"
-    throughput_images = [image1, image2, image3]
-    pipeline_images = [image4, image5, image6]
-    print(throughput_images)
-    print(pipeline_images)
+    repo_root = Path(__file__).resolve().parents[2]
+    data_root = repo_root / "data"
+
+    def existing_image_urls(paths: List[str]) -> List[str]:
+        existing = []
+        for relative_url in paths:
+            relative_path = relative_url.removeprefix("/data/")
+            if (data_root / relative_path).exists():
+                existing.append(relative_url)
+        return existing
+
+    throughput_candidates = [
+        f"/data/images/throughput/{device_type}-{model_type}-mbn2-total_die{total_die}.png",
+        f"/data/images/throughput/{device_type}-{model_type}-mbn3-total_die{total_die}.png",
+        f"/data/images/throughput/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.png",
+    ]
+    pipeline_candidates = [
+        f"/data/images/pipeline/mbn2/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
+        f"/data/images/pipeline/mbn3/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
+        f"/data/images/pipeline/deepep/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
+    ]
+    throughput_images = existing_image_urls(throughput_candidates)
+    pipeline_images = existing_image_urls(pipeline_candidates)
     return {"throughput_images": throughput_images, "pipeline_images": pipeline_images}
 
 # model config endpoint: accepts model_type as string

@@ -15,8 +15,9 @@ Tell it your model, chip type, and cluster size, and it returns a near-optimal c
 
 - 🎯 **AFD Search**: Attention-FFN Disaggregated deployment optimization
 - 📊 **DeepEP Baseline**: DeepEP deployment optimization
-- 📈 **Visualization**: Pareto frontier plots, pipeline analysis and throughput changes 
+- 📈 **Visualization**: Pareto frontier plots, pipeline analysis and throughput changes
 - 🚀 **Multi-Token Prediction (MTP)**: Support for multi-token generation
+- 🖥️ **Web UI**: Vue 3 + FastAPI browser UI for runs, configuration, results, and charts
 - 🎨 **Extensible Architecture**: Easy to add new models, operators, or search strategies
 
 ## Supported Serving Mode
@@ -38,6 +39,7 @@ Tell it your model, chip type, and cluster size, and it returns a near-optimal c
 
 ```
 light-llm-simulator/
+├── data/              # Generated CSVs and visualization images
 ├── conf/              # Configuration files
 │   ├── common.py            # Common constants
 │   ├── config.py            # CLI configurations
@@ -76,6 +78,15 @@ light-llm-simulator/
 │   │   └── deepep.py       # DeepEP search
 │   └── visualization/      # Visualization tools
 │       └── throughput.py       # Visualize throughput changes
+├── webapp/            # FastAPI backend + Vue 3 frontend
+│   ├── backend/
+│   │   └── main.py          # FastAPI app, API routes, static mounts
+│   └── frontend/
+│       ├── index.html       # SPA entrypoint
+│       ├── app.js           # Shared frontend runtime + SFC loader bootstrap
+│       ├── components/      # Vue tab components
+│       └── styles/
+│           └── main.css
 └── README.md
 ```
 
@@ -97,6 +108,33 @@ See the [`examples/`](examples/) directory for runnable examples:
 
 - [DeepSeekV3-671B Example](examples/deepseek/) - Complete example with AFD and DeepEP search
 - [Qwen3-235B-A22B Example](examples/qwen235B/) - Complete example with AFD and DeepEP search
+
+## Web UI
+
+The repository includes a browser-based UI served directly by FastAPI. The frontend lives under [`webapp/frontend/`](webapp/frontend/) and uses Vue 3 with browser-side SFC loading. The backend entrypoint is [`webapp/backend/main.py`](webapp/backend/main.py).
+
+### Start the web app
+
+```bash
+pip install -r requirements.txt
+LOG_LEVEL=INFO uvicorn webapp.backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Open: <http://127.0.0.1:8000>
+
+### UI workflow
+
+- **Run Experiment**: Submit a simulation and watch live log/progress polling
+- **Configuration**: Inspect model and hardware config for the latest run selection
+- **Results**: Load one generated CSV and filter/sort rows within that file
+- **Visualizations**: Show backend-generated throughput and pipeline images for the selected parameters
+
+### Notes
+
+- `LOG_LEVEL=INFO` is recommended so the Run tab can infer progress phases from logs.
+- CSV results are loaded from generated files under `data/afd/` or `data/deepep/`.
+- Visualization images are served from `/data/images/`.
+- `/api/results` returns only image URLs that currently exist on disk, so the UI can avoid avoidable image 404s.
 
 ## Requirements
 
