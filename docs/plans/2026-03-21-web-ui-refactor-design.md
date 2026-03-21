@@ -1,7 +1,7 @@
 # Web UI Refactor Design
 
 **Date:** 2026-03-21
-**Status:** Approved
+**Status:** Implemented on `feature/web-ui-refactor-impl`
 
 ## Problem Statement
 
@@ -14,9 +14,10 @@ The Light LLM Simulator has an accurate AFD simulation engine but suffers from p
 
 ## Solution Overview
 
-Refactor the web frontend to Vue.js 3 (via CDN) while keeping the FastAPI backend unchanged. This provides:
+Refactor the web frontend to Vue.js 3 (via CDN) with a minimal FastAPI adjustment for image URL filtering. This provides:
 
-- Tab-based navigation with vertical single-column layout
+- Tab-based navigation with responsive layouts
+- Two-column desktop layouts for Run and Configuration tabs
 - Real-time simulation progress (requires INFO logging)
 - CSV file selector with filterable/sortable results within selected file
 - Static image visualizations (no interactive zoom/pan)
@@ -28,7 +29,7 @@ Refactor the web frontend to Vue.js 3 (via CDN) while keeping the FastAPI backen
 - **Frontend:** Vue 3 (Composition API) via CDN
 - **SFC Loading:** vue3-sfc-loader (browser-based .vue compilation)
 - **Charts:** Static images loaded from `/data/images/` (backend-generated PNGs)
-- **Backend:** FastAPI (unchanged - calls CLI as subprocess)
+- **Backend:** FastAPI (still calls CLI as subprocess; `/api/results` now filters missing image URLs)
 - **Persistence:** localStorage for tab state, run history, CSV selection
 
 ### Component Structure
@@ -50,18 +51,18 @@ App
 ```
 
 ### State Management
-- `useStore` composable for global state using **singleton pattern**
-  - Module-level refs ensure all components share the same state
-  - `currentTab` for navigation state
-  - `runHistory` for simulation history
-  - `csvSelection` for currently selected CSV file parameters
-- Reactive refs for component-local state
-- `watch()` for config changes (model_type, device_type)
+- Shared runtime lives in `webapp/frontend/app.js`
+- `window.LightLLMRuntime` exposes:
+  - `Vue`
+  - `useStore()` for singleton navigation/run/CSV state
+  - `useApi()` for FastAPI calls
+- Reactive refs are still used for component-local state
+- `watch()` drives config refreshes and run-status polling
 
 ### API Layer
-- `useApi.js` composable wrapping all FastAPI calls
-- Centralized error handling
-- Response caching where appropriate
+- `app.js` owns the `fetchJson()` wrapper and exposes `useApi()`
+- Centralized error handling for `/api/*` calls
+- Shared CSV selection is seeded from the latest started run so Results and Visualizations follow the current simulation context
 
 ## Tab Design
 
@@ -70,6 +71,7 @@ App
 - Real-time progress bar and log streaming (poll `/logs/{run_id}`)
 - Phase indicators and optional heuristic ETA
 - Run history in localStorage
+- Desktop layout keeps `RunForm` and `RunStatus` side by side so progress remains visible while editing parameters
 
 **Important:** Phase detection requires backend to log progress at INFO level. The default WARNING level will suppress phase marker messages.
 
@@ -77,6 +79,7 @@ App
 - Model specs from `/api/model_config`
 - Hardware specs from `/api/hardware_config`
 - Formatted display with human-readable units
+- Desktop layout shows model and hardware panels side by side
 
 ### Results Tab
 
@@ -111,18 +114,18 @@ The Results tab is designed to filter and sort WITHIN a SINGLE selected CSV file
 - No interactive zoom/pan (requires backend API changes not in scope)
 - No export functionality (requires backend API changes not in scope)
 
-**Note:** The current backend returns static image URLs only. Interactive features like zoom/pan and export would require new API endpoints that provide raw chart data or generate images on-demand.
+**Note:** The current backend returns static image URLs only, and now filters the `/api/results` response down to files that actually exist on disk. Interactive features like zoom/pan and export would still require new API endpoints that provide raw chart data or generate images on-demand.
 
 ## File Structure
 
 ```
 webapp/
 ├── backend/
-│   └── main.py (unchanged)
+│   └── main.py (FastAPI app; `/api/results` filters missing image URLs)
 └── frontend/
     ├── index.html (Vue app mount point only, loads app.js)
     ├── index_old.html (backup of current implementation)
-    ├── app.js (Vue app entry with vue3-sfc-loader configuration)
+    ├── app.js (Vue app entry, shared runtime, and vue3-sfc-loader configuration)
     ├── components/
     │   ├── TabManager.vue
     │   ├── RunExperimentTab/
@@ -141,10 +144,6 @@ webapp/
     │   └── VisualizationsTab/
     │       ├── ThroughputCharts.vue
     │       └── index.vue
-    ├── composables/
-    │   ├── useApi.js
-    │   ├── useStore.js (singleton pattern with CSV selection)
-    │   └── useLocalStorage.js
     └── styles/
         └── main.css
 ```
@@ -166,7 +165,8 @@ webapp/
 ### Regression Prevention
 - Keep current `index.html` as backup
 - Verify all existing API endpoints still work
-- Run simulator CLI to confirm backend unchanged
+- Run simulator CLI to confirm search behavior remains unchanged
+- Verify `/api/results` returns only URLs for image files that exist on disk
 
 ### Cross-Browser Testing
 - Chrome (primary)
@@ -175,10 +175,10 @@ webapp/
 
 ## Implementation Notes
 
-- **Backend API endpoints remain unchanged**
+- **Backend mostly unchanged** - CLI orchestration and CSV endpoints are the same; `/api/results` was tightened to filter missing image files
 - **No build step required** - Vue 3 via CDN with vue3-sfc-loader
 - **Static asset URLs** - FastAPI serves `index.html` at `/` and mounts `webapp/frontend/` at `/static`, so CSS, JS, and the top-level `.vue` loader path should use absolute `/static/...` URLs
-- **Nested SFC imports** - If a child `.vue` or `../composables/...` import 404s during integration, adjust the loader `getFile()` helper to resolve relative URLs against the parent module URL
+- **Runtime wiring** - Shared API/store helpers live in `app.js` and are exposed via `window.LightLLMRuntime` to avoid local JS-module import issues inside browser-compiled SFCs
 - **State sharing** - useStore uses singleton pattern (module-level refs) to ensure all components access to same state including CSV selection
 - **Progress tracking** - Requires `LOG_LEVEL=INFO` environment variable for phase detection to work
 - **CSV schema** - ResultsTable dynamically adapts to whatever columns exist in actual CSV data
@@ -187,7 +187,7 @@ webapp/
 
 ## Known Limitations (Backend Constraints)
 
-Since the backend remains unchanged, the following features have limitations:
+Since the backend remains intentionally lightweight, the following features still have limitations:
 
 1. **Progress/Phase Detection:** Only works when backend logs at INFO level. Default WARNING level suppresses phase markers.
 

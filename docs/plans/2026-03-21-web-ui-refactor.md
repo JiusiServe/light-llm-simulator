@@ -2,15 +2,31 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Refactor web frontend to Vue.js 3 SPA with tab-based navigation, real-time progress, filterable results (within selected CSV), and static image visualizations while keeping FastAPI backend unchanged.
+**Goal:** Refactor web frontend to Vue.js 3 SPA with tab-based navigation, real-time progress, filterable results (within selected CSV), and static image visualizations while keeping the FastAPI backend lightweight.
 
-**Architecture:** Vue 3 (Composition API) via CDN with browser-based SFC loader, component-based structure, reactive state management.
+**Architecture:** Vue 3 (Composition API) via CDN with browser-based SFC loader, component-based structure, shared runtime in `app.js`, and reactive state management.
 
-**Tech Stack:** Vue 3, vue3-sfc-loader (browser-based SFC compilation), localStorage, FastAPI (unchanged)
+**Tech Stack:** Vue 3, vue3-sfc-loader (browser-based SFC compilation), localStorage, FastAPI
 
 **Build Approach:** Vue Single-File Components (.vue) compiled on-demand in browser using vue3-sfc-loader. No package.json or npm build step required.
 
 **Results Tab Design:** Filter and sort within a SINGLE selected CSV file. The backend does not provide a way to query available CSV files or filter across runs/models/devices. Each simulation produces CSV files named by pattern `{DeviceType.name}-{ModelType.name}-tpot{tpot}-kv_len{kvLen}.csv`.
+
+## Implementation Status
+
+The frontend described in this plan has now been implemented on branch `feature/web-ui-refactor-impl`.
+
+The high-level direction is still correct, but the shipped implementation differs from the original task-by-task plan in a few important ways:
+
+- Shared frontend runtime lives in `webapp/frontend/app.js`, exposed as `window.LightLLMRuntime`
+- Separate `webapp/frontend/composables/useApi.js`, `useStore.js`, and `useLocalStorage.js` were not kept in the final implementation
+- Run and Configuration use responsive multi-column desktop layouts rather than strictly single-column layouts
+- `RunStatus` stays mounted beside `RunForm`, so progress remains visible without tab switching
+- FastAPI received one small backend adjustment: `/api/results` now filters out image URLs that do not exist on disk
+
+## Historical Note
+
+The detailed tasks below are preserved as the original implementation plan. They are useful for context, but they still mention intermediate files and structures that were simplified during implementation. Treat the actual code under `webapp/frontend/` and `webapp/backend/main.py` as the source of truth.
 
 ---
 
