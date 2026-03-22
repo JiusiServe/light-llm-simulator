@@ -45,3 +45,7 @@ data/
 
 # Logs
 *.log
+
+# Claude Code
+.claude/
+.runs/
