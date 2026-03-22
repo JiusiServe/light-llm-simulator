@@ -25,7 +25,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Requirements:** Python 3.8+, `pandas`, `matplotlib`, `numpy` (see [`requirements.txt`](requirements.txt)). There is no PyPI package yet; install from a clone of this repository.
+**Requirements:** Python 3.8+, `pandas`, `matplotlib`, `numpy`, `fastapi`, and `uvicorn` (see [`requirements.txt`](requirements.txt)). There is no PyPI package yet; install from a clone of this repository.
 
 ## Run
 

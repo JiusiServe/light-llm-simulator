@@ -17,11 +17,14 @@ MPLBACKEND=agg python -m pytest -m "unit or build"
 # Unit only
 MPLBACKEND=agg python -m pytest -m unit
 
+# Webapp API smoke only
+python -m pytest tests/e2e/test_webapp_api_smoke.py
+
 # All tests (including e2e)
 MPLBACKEND=agg python -m pytest
 ```
 
 - **`unit`**: config, hardware, operators, `get_model`, CLI `--help`.
-- **`e2e` / `build`**: AFD/DeepEP smoke under `tmp_path` (no writes to repo `data/`) and a minimal CLI run with `LIGHT_LLM_SKIP_POST_PLOTS=1` so visualization is skipped.
+- **`e2e` / `build`**: AFD/DeepEP smoke under `tmp_path` (no writes to repo `data/`), FastAPI webapp API smoke, and a minimal CLI run with `LIGHT_LLM_SKIP_POST_PLOTS=1` so visualization is skipped.
 
 If you see matplotlib GUI errors, keep `MPLBACKEND=agg`.
