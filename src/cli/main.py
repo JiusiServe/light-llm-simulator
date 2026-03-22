@@ -1,8 +1,9 @@
 import argparse
+import os
 import sys
 from pathlib import Path
+
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-print("sys.path", sys.path)
 from conf.config import Config
 from src.search.afd import AfdSearch
 from src.search.deepep import DeepEpSearch
@@ -105,6 +106,9 @@ def main():
     add_arguments(parser)
     args = parser.parse_args()
     run_search(args)
+
+    if os.environ.get("LIGHT_LLM_SKIP_POST_PLOTS", "").lower() in ("1", "true", "yes"):
+        return
 
     import subprocess
     throughput_cmd = [

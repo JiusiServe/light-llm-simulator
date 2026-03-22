@@ -154,6 +154,15 @@ light-llm-simulator/
 └── webapp/         # FastAPI + Vue
 ```
 
+## Testing
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+MPLBACKEND=agg python -m pytest -m "unit or build"
+```
+
+See [`tests/README.md`](tests/README.md) for markers and commands.
+
 ## Contributing
 
 Contributions are welcome via pull request.
