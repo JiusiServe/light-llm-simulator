@@ -1,5 +1,5 @@
-name: 💻 Usage
-description: Raise an issue here if you don't know how to use vllm.
+name: 💻 Usage / Help
+description: Get help using the simulator or understanding configuration
 title: "[Usage]: "
 labels: ["usage"]
 
@@ -7,39 +7,55 @@ body:
 - type: markdown
   attributes:
     value: >
-      #### Before submitting an issue, please make sure the issue hasn't been already addressed by searching through [the existing and past issues](https://github.com/vllm-project/vllm/issues?q=is%3Aissue+sort%3Acreated-desc+).
+      #### Please check the [documentation](https://github.com/your-org/light-llm-simulator/tree/main/docs) and [examples](https://github.com/your-org/light-llm-simulator/tree/main/examples) first.
 - type: textarea
   attributes:
-    label: Your current environment
+    label: Your environment
     description: |
-      Please run the following and paste the output below.
-      ```sh
-      wget https://raw.githubusercontent.com/vllm-project/vllm/main/vllm/collect_env.py
-      # For security purposes, please feel free to check the contents of collect_env.py before running it.
-      python collect_env.py
-      ```
-      It is suggested to download and execute the latest script, as vllm might frequently update the diagnosis information needed for accurately and quickly responding to issues.
+      Please provide:
+      - Python version
+      - Model and hardware you're trying to simulate
     value: |
-      ```text
-      The output of `python collect_env.py`
       ```
-  validations:
+      Python version: 3.x.x
+      Model type: DeepSeek V3 / Qwen3-235B / Other
+      Hardware: Ascend / Nvidia / Other
+      ```
+    validations:
     required: true
 - type: textarea
   attributes:
-    label: How would you like to use vllm
+    label: What are you trying to do?
     description: |
-      A detailed description of how you want to use vllm.
+      Describe what you want to accomplish with the simulator.
+
+      Examples:
+      - "I want to find optimal AFD configuration for DeepSeek V3 on Ascend A3Pod"
+      - "I need to understand how to configure TPOT and KV cache length for my use case"
+      - "I'm trying to add a new model but don't know where to start"
+    placeholder: |
+      I want to run a simulation for [model] on [hardware] to find the best [AFD/DeepEP] configuration.
+    validations:
+    required: true
+- type: textarea
+  attributes:
+    label: What have you tried?
+    description: |
+      Share commands you've run or configurations you've tried:
     value: |
-      I want to run inference of a [specific model](put link here). I don't know how to integrate it with vllm.
+      ```bash
+      python examples/deepseek/afd.py --tpot 50 --kv_len 4096
+      ```
+    validations:
+    required: false
+- type: textarea
+  attributes:
+    label: Error or unexpected behavior (if any)
+    description: |
+      If you're encountering an error, paste the full message and traceback here.
+    validations:
+    required: false
 - type: markdown
   attributes:
-    value: >
-      Thanks for contributing 🎉!
-- type: checkboxes
-  id: askllm
-  attributes:
-    label: Before submitting a new issue...
-    options:
-      - label: Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.
-        required: true
+    value: |
+      Thanks for asking! 🙏

@@ -1,5 +1,5 @@
-name: ⚡ Discussion on the performance of vllm
-description: Submit a proposal/discussion about the performance of vllm
+name: ⚡ Performance discussion
+description: Discuss simulator accuracy, optimizations, or performance modeling
 title: "[Performance]: "
 labels: ["performance"]
 
@@ -7,53 +7,45 @@ body:
 - type: markdown
   attributes:
     value: >
-      #### Before submitting an issue, please make sure the issue hasn't been already addressed by searching through [the existing and past issues](https://github.com/vllm-project/vllm/issues?q=is%3Aissue+sort%3Acreated-desc+).
+      #### Before submitting, please check existing [issues](https://github.com/your-org/light-llm-simulator/issues?q=is%3Aissue+label%3Aperformance+sort%3Acreated-desc+).
 - type: textarea
   attributes:
-    label: Proposal to improve performance
+    label: 🎯 Topic
     description: >
-      How do you plan to improve vllm's performance?
-  validations:
+      What aspect of the simulator's performance or accuracy do you want to discuss?
+
+      Examples:
+      - Simulator accuracy vs real-world measurements
+      - Optimizing search algorithm efficiency
+      - Improving operator cost models
+    validations:
     required: false
 - type: textarea
   attributes:
-    label: Report of performance regression
+    label: Proposed improvement
     description: >
-      Please provide detailed description of performance comparison to confirm the regression. You may want to run the benchmark script at https://github.com/vllm-project/vllm/tree/main/benchmarks .
-  validations:
+      Do you have a specific proposal to improve the simulator's performance or accuracy?
+    validations:
     required: false
 - type: textarea
   attributes:
-    label: Misc discussion on performance
+    label: Accuracy concern
     description: >
-      Anything about the performance.
-  validations:
+      If you believe the simulator is producing inaccurate results, please provide:
+
+      - Your configuration (model, hardware, parameters)
+      - Expected vs actual results
+      - Real-world measurements if available
+    validations:
     required: false
 - type: textarea
   attributes:
-    label: Your current environment (if you think it is necessary)
-    description: |
-      Please run the following and paste the output below.
-      ```sh
-      wget https://raw.githubusercontent.com/vllm-project/vllm/main/vllm/collect_env.py
-      # For security purposes, please feel free to check the contents of collect_env.py before running it.
-      python collect_env.py
-      ```
-      It is suggested to download and execute the latest script, as vllm might frequently update the diagnosis information needed for accurately and quickly responding to issues.
-    value: |
-      ```text
-      The output of `python collect_env.py`
-      ```
-  validations:
+    label: Additional context
+    description: >
+      Any supporting data, charts, or links to relevant papers or benchmarks.
+    validations:
     required: false
 - type: markdown
   attributes:
-    value: >
-      Thanks for contributing 🎉!
-- type: checkboxes
-  id: askllm
-  attributes:
-    label: Before submitting a new issue...
-    options:
-      - label: Make sure you already searched for relevant issues, and asked the chatbot living at the bottom right corner of the [documentation page](https://docs.vllm.ai/en/latest/), which can answer lots of frequently asked questions.
-        required: true
+    value: |
+      Thanks for contributing! 🚀
