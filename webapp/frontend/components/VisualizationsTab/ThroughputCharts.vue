@@ -12,8 +12,26 @@
 
     <div class="chart-controls">
       <label class="field">
-        <span>Device Type</span>
+        <span>Deployment Mode</span>
+        <select v-model="params.deploymentMode">
+          <option v-for="mode in deploymentModes" :key="mode.value" :value="mode.value">
+            {{ mode.label }}
+          </option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>{{ deviceTypeLabel }}</span>
         <select v-model="params.deviceType">
+          <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
+            {{ device.label }}
+          </option>
+        </select>
+      </label>
+
+      <label class="field" v-if="params.deploymentMode === 'Heterogeneous'">
+        <span>{{ deviceType2Label }}</span>
+        <select v-model="params.deviceType2">
           <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
             {{ device.label }}
           </option>
@@ -118,12 +136,14 @@
 <script>
 const DEFAULT_PARAMS = {
   deviceType: 'ASCENDA3_Pod',
+  deviceType2: 'ASCENDDAVID121',
   modelType: 'DEEPSEEK_V3',
   totalDie: 128,
   tpot: 50,
   kvLen: 4096,
   servingMode: 'AFD',
-  microBatchNum: 3
+  microBatchNum: 3,
+  deploymentMode: 'Homogeneous'
 };
 
 const DEVICE_OPTIONS = [
@@ -143,13 +163,18 @@ const MODEL_OPTIONS = [
   { value: 'DEEPSEEK_V2_LITE', label: 'DeepSeek V2 Lite' }
 ];
 
+const DEPLOYMENT_MODES = [
+  { value: 'Homogeneous', label: 'Homogeneous' },
+  { value: 'Heterogeneous', label: 'Heterogeneous' }
+];
+
 const DIE_OPTIONS = [64, 128, 256, 384, 512, 768];
 const TPOT_OPTIONS = [20, 50, 70, 100, 150];
 const KV_LEN_OPTIONS = [2048, 4096, 8192, 16384, 131072];
 
 export default {
   setup() {
-    const { ref, reactive, onMounted } = window.LightLLMRuntime.Vue;
+    const { ref, reactive, onMounted, computed } = window.LightLLMRuntime.Vue;
     const { useApi, useStore } = window.LightLLMRuntime;
     const api = useApi();
     const { getCsvSelection, setCsvSelection } = useStore();
@@ -163,6 +188,20 @@ export default {
     const error = ref(null);
     const missingImages = reactive(new Set());
 
+    const deviceTypeLabel = computed(() => {
+      if (params.servingMode === 'AFD' && params.deploymentMode === 'Heterogeneous') {
+        return 'Device Type (Attention)';
+      }
+      return 'Device Type';
+    });
+
+    const deviceType2Label = computed(() => {
+      if (params.servingMode === 'AFD' && params.deploymentMode === 'Heterogeneous') {
+        return 'Device Type 2 (FFN)';
+      }
+      return 'Device Type 2';
+    });
+
     const markMissing = (url) => {
       missingImages.add(url);
     };
@@ -173,18 +212,25 @@ export default {
       missingImages.clear();
 
       try {
-        const data = await api.getResults({
+        const apiParams = {
           device_type: params.deviceType,
           model_type: params.modelType,
           total_die: String(params.totalDie),
           tpot: String(params.tpot),
-          kv_len: String(params.kvLen)
-        });
+          kv_len: String(params.kvLen),
+          deployment_mode: params.deploymentMode
+        };
+        if (params.deploymentMode === 'Heterogeneous') {
+          apiParams.device_type2 = params.deviceType2;
+        }
+        const data = await api.getResults(apiParams);
         throughputImages.value = Array.isArray(data.throughput_images) ? data.throughput_images : [];
         pipelineImages.value = Array.isArray(data.pipeline_images) ? data.pipeline_images : [];
         setCsvSelection({
           servingMode: params.servingMode || 'AFD',
+          deploymentMode: params.deploymentMode,
           deviceType: params.deviceType,
+          deviceType2: params.deviceType2,
           modelType: params.modelType,
           totalDie: Number(params.totalDie),
           tpot: Number(params.tpot),
@@ -217,8 +263,11 @@ export default {
       missingImages,
       markMissing,
       loadCharts,
+      deviceTypeLabel,
+      deviceType2Label,
       deviceOptions: DEVICE_OPTIONS,
       modelOptions: MODEL_OPTIONS,
+      deploymentModes: DEPLOYMENT_MODES,
       dieOptions: DIE_OPTIONS,
       tpotOptions: TPOT_OPTIONS,
       kvLenOptions: KV_LEN_OPTIONS

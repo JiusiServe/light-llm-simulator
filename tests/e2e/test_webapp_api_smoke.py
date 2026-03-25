@@ -192,59 +192,98 @@ def test_status_and_logs_404_for_missing_run(
     assert logs_response.json()["detail"] == "log not found"
 
 
+@pytest.mark.parametrize("deployment_mode", ["Homogeneous", "Heterogeneous"])
 def test_results_endpoint_returns_only_existing_image_urls(
     fake_repo_root: Path,
+    deployment_mode: str,
 ) -> None:
-    throughput_dir = fake_repo_root / "data" / "images" / "throughput"
-    pipeline_mbn3_dir = fake_repo_root / "data" / "images" / "pipeline" / "mbn3"
+    throughput_dir = fake_repo_root / "data" / "images" / "throughput" / deployment_mode.lower()
+    pipeline_dir = fake_repo_root / "data" / "images" / "pipeline" / "afd" / deployment_mode.lower()
     throughput_dir.mkdir(parents=True, exist_ok=True)
-    pipeline_mbn3_dir.mkdir(parents=True, exist_ok=True)
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
 
-    throughput_file = throughput_dir / (
-        "Ascend_910b2-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
-    )
-    pipeline_file = pipeline_mbn3_dir / (
-        "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-total_die128.png"
-    )
+    # Build file names based on deployment mode
+    if deployment_mode == "Heterogeneous":
+        throughput_file = throughput_dir / (
+            "Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
+        )
+        pipeline_file = pipeline_dir / (
+            "Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-afd-mbn3-total_die128.png"
+        )
+        expected_throughput = [
+            "/data/images/throughput/heterogeneous/Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
+        ]
+        expected_pipeline = [
+            "/data/images/pipeline/afd/heterogeneous/Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-afd-mbn3-total_die128.png"
+        ]
+    else:
+        throughput_file = throughput_dir / (
+            "Ascend_910b2-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
+        )
+        pipeline_file = pipeline_dir / (
+            "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-afd-mbn3-total_die128.png"
+        )
+        expected_throughput = [
+            "/data/images/throughput/homogeneous/Ascend_910b2-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
+        ]
+        expected_pipeline = [
+            "/data/images/pipeline/afd/homogeneous/Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-afd-mbn3-total_die128.png"
+        ]
+
     throughput_file.parent.mkdir(parents=True, exist_ok=True)
     pipeline_file.parent.mkdir(parents=True, exist_ok=True)
     throughput_file.write_text("png", encoding="utf-8")
     pipeline_file.write_text("png", encoding="utf-8")
 
-    response = api_request(
-        "GET",
-        "/api/results",
-        params={
-            "model_type": "deepseek-ai/DeepSeek-V3",
-            "device_type": "Ascend_910b2",
-            "total_die": 128,
-            "tpot": 50,
-            "kv_len": 4096,
-        },
-    )
+    params = {
+        "model_type": "deepseek-ai/DeepSeek-V3",
+        "device_type": "Ascend_910b2",
+        "total_die": 128,
+        "tpot": 50,
+        "kv_len": 4096,
+        "deployment_mode": deployment_mode,
+    }
+    if deployment_mode == "Heterogeneous":
+        params["device_type2"] = "Nvidia_A100_SXM"
+
+    response = api_request("GET", "/api/results", params=params)
 
     assert response.status_code == 200
     assert response.json() == {
-        "throughput_images": [
-            "/data/images/throughput/Ascend_910b2-deepseek-ai/DeepSeek-V3-mbn2-total_die128.png"
-        ],
-        "pipeline_images": [
-            "/data/images/pipeline/mbn3/Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096-total_die128.png"
-        ],
+        "throughput_images": expected_throughput,
+        "pipeline_images": expected_pipeline,
     }
 
 
+@pytest.mark.parametrize("deployment_mode", ["Homogeneous", "Heterogeneous"])
 def test_fetch_csv_results_returns_filtered_rows_for_afd(
     fake_repo_root: Path,
+    deployment_mode: str,
 ) -> None:
-    csv_path = (
-        fake_repo_root
-        / "data"
-        / "afd"
-        / "mbn3"
-        / "best"
-        / "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
-    )
+    # Build path based on deployment mode
+    if deployment_mode == "Heterogeneous":
+        csv_path = (
+            fake_repo_root
+            / "data"
+            / "afd"
+            / "mbn3"
+            / "best"
+            / "heterogeneous"
+            / "Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
+        )
+        device_type2 = "Nvidia_A100_SXM"
+    else:
+        csv_path = (
+            fake_repo_root
+            / "data"
+            / "afd"
+            / "mbn3"
+            / "best"
+            / "homogeneous"
+            / "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
+        )
+        device_type2 = None
+
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_text(
         "\n".join(
@@ -257,19 +296,20 @@ def test_fetch_csv_results_returns_filtered_rows_for_afd(
         encoding="utf-8",
     )
 
-    response = api_request(
-        "GET",
-        "/api/fetch_csv_results",
-        params={
-            "device_type": "Ascend_910b2",
-            "model_type": "deepseek-ai/DeepSeek-V3",
-            "tpot": 50,
-            "kv_len": 4096,
-            "serving_mode": "AFD",
-            "micro_batch_num": 3,
-            "total_die": 128,
-        },
-    )
+    params = {
+        "device_type": "Ascend_910b2",
+        "model_type": "deepseek-ai/DeepSeek-V3",
+        "tpot": 50,
+        "kv_len": 4096,
+        "serving_mode": "AFD",
+        "micro_batch_num": 3,
+        "total_die": 128,
+        "deployment_mode": deployment_mode,
+    }
+    if device_type2:
+        params["device_type2"] = device_type2
+
+    response = api_request("GET", "/api/fetch_csv_results", params=params)
 
     assert response.status_code == 200
     assert response.json() == [
@@ -281,15 +321,31 @@ def test_fetch_csv_results_returns_filtered_rows_for_afd(
     ]
 
 
+@pytest.mark.parametrize("deployment_mode", ["Homogeneous", "Heterogeneous"])
 def test_fetch_csv_results_returns_rows_for_deepep(
     fake_repo_root: Path,
+    deployment_mode: str,
 ) -> None:
-    csv_path = (
-        fake_repo_root
-        / "data"
-        / "deepep"
-        / "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
-    )
+    # Build path based on deployment mode
+    if deployment_mode == "Heterogeneous":
+        csv_path = (
+            fake_repo_root
+            / "data"
+            / "deepep"
+            / "heterogeneous"
+            / "Ascend_910b2_Nvidia_A100_SXM-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
+        )
+        device_type2 = "Nvidia_A100_SXM"
+    else:
+        csv_path = (
+            fake_repo_root
+            / "data"
+            / "deepep"
+            / "homogeneous"
+            / "Ascend_910b2-deepseek-ai/DeepSeek-V3-tpot50-kv_len4096.csv"
+        )
+        device_type2 = None
+
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_text(
         "\n".join(
@@ -302,17 +358,18 @@ def test_fetch_csv_results_returns_rows_for_deepep(
         encoding="utf-8",
     )
 
-    response = api_request(
-        "GET",
-        "/api/fetch_csv_results",
-        params={
-            "device_type": "Ascend_910b2",
-            "model_type": "deepseek-ai/DeepSeek-V3",
-            "tpot": 50,
-            "kv_len": 4096,
-            "serving_mode": "DeepEP",
-        },
-    )
+    params = {
+        "device_type": "Ascend_910b2",
+        "model_type": "deepseek-ai/DeepSeek-V3",
+        "tpot": 50,
+        "kv_len": 4096,
+        "serving_mode": "DeepEP",
+        "deployment_mode": deployment_mode,
+    }
+    if device_type2:
+        params["device_type2"] = device_type2
+
+    response = api_request("GET", "/api/fetch_csv_results", params=params)
 
     assert response.status_code == 200
     assert response.json() == [

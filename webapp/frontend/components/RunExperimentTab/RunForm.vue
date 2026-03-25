@@ -20,8 +20,23 @@
         </select>
       </div>
       <div class="field">
-        <label>Device Type</label>
+        <label>Deployment Mode</label>
+        <select v-model="form.deployment_mode">
+          <option value="Homogeneous">Homogeneous</option>
+          <option value="Heterogeneous">Heterogeneous</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>{{ deviceTypeLabel }}</label>
         <select v-model="form.device_type">
+          <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
+            {{ device.label }}
+          </option>
+        </select>
+      </div>
+      <div class="field" v-if="form.deployment_mode === 'Heterogeneous'">
+        <label>{{ deviceType2Label }}</label>
+        <select v-model="form.device_type2">
           <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
             {{ device.label }}
           </option>
@@ -43,18 +58,34 @@
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Min Die</label>
+          <label>{{ minDieLabel }}</label>
           <input type="number" v-model.number="form.min_die" min="16" />
         </div>
         <div class="field">
-          <label>Max Die</label>
+          <label>{{ maxDieLabel }}</label>
           <input type="number" v-model.number="form.max_die" min="16" />
         </div>
       </div>
       <div class="field">
-        <label>Die Step</label>
+        <label>{{ dieStepLabel }}</label>
         <input type="number" v-model.number="form.die_step" min="1" />
       </div>
+      <template v-if="form.deployment_mode === 'Heterogeneous'">
+        <div class="field-row">
+          <div class="field">
+            <label>{{ minDie2Label }}</label>
+            <input type="number" v-model.number="form.min_die2" min="16" />
+          </div>
+          <div class="field">
+            <label>{{ maxDie2Label }}</label>
+            <input type="number" v-model.number="form.max_die2" min="16" />
+          </div>
+        </div>
+        <div class="field">
+          <label>{{ dieStep2Label }}</label>
+          <input type="number" v-model.number="form.die_step2" min="1" />
+        </div>
+      </template>
     </div>
 
     <div class="section">
@@ -136,11 +167,16 @@ export default {
       serving_mode: 'AFD',
       model_type: MODEL_OPTIONS[0].value,
       device_type: DEVICE_OPTIONS[0].value,
+      deployment_mode: 'Homogeneous',
+      device_type2: DEVICE_OPTIONS[1].value,
       min_attn_bs: 2,
       max_attn_bs: 1000,
       min_die: 16,
       max_die: 768,
       die_step: 16,
+      min_die2: 16,
+      max_die2: 768,
+      die_step2: 16,
       next_n: 1,
       multi_token_ratio: 0.7,
       attn_tensor_parallel: 1,
@@ -152,6 +188,65 @@ export default {
     const mbnInput = ref('3');
     const isSubmitting = ref(false);
     const error = ref(null);
+
+    // Computed labels based on serving mode and deployment mode
+    const { computed } = window.LightLLMRuntime.Vue;
+
+    const deviceTypeLabel = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Device Type (Attention)';
+      }
+      return 'Device Type';
+    });
+
+    const minDieLabel = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Min Die (Attention)';
+      }
+      return 'Min Die';
+    });
+
+    const maxDieLabel = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Max Die (Attention)';
+      }
+      return 'Max Die';
+    });
+
+    const dieStepLabel = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Die Step (Attention)';
+      }
+      return 'Die Step';
+    });
+
+    const minDie2Label = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Min Die 2 (FFN)';
+      }
+      return 'Min Die 2';
+    });
+
+    const maxDie2Label = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Max Die 2 (FFN)';
+      }
+      return 'Max Die 2';
+    });
+
+    const dieStep2Label = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Die Step 2 (FFN)';
+      }
+      return 'Die Step 2';
+    });
+
+    const deviceType2Label = computed(() => {
+      if (form.value.serving_mode === 'AFD' && form.value.deployment_mode === 'Heterogeneous') {
+        return 'Device Type (FFN)';
+      }
+      return 'Device Type 2';
+    });
 
     const parseList = (value) => {
       if (!value) return [];
@@ -193,7 +288,15 @@ export default {
       deviceOptions: DEVICE_OPTIONS,
       isSubmitting,
       error,
-      handleSubmit
+      handleSubmit,
+      deviceTypeLabel,
+      minDieLabel,
+      maxDieLabel,
+      dieStepLabel,
+      deviceType2Label,
+      minDie2Label,
+      maxDie2Label,
+      dieStep2Label
     };
   }
 };

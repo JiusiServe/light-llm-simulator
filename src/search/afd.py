@@ -13,8 +13,10 @@ class AfdSearch(BaseSearch):
     '''
     Description:
         The AFD search algorithm.
-        It is used to search the optimal attention batch size, 
+        It is used to search the optimal attention batch size,
         attention die count, FFN die count for the model used AFD serving.
+        Supports both Homogeneous (single device type) and Heterogeneous
+        (different device types for attention and FFN) deployment modes.
     Attributes:
         config: The configuration of the AFD search task.
         perf_afd_results: The performance results of the AFD search,
@@ -34,6 +36,9 @@ class AfdSearch(BaseSearch):
             e2e_time_per_dense_layer: End-to-end time for per dense layers (μs), float.
             e2e_time_per_moe_layer: End-to-end time for per MoE layers (μs), float.
             throughput: Throughput (tokens/second), float.
+            deployment_mode: "Homogeneous" or "Heterogeneous".
+            device_type_attn: Device type for attention.
+            device_type_ffn: Device type for FFN.
     '''
     ATTN_DIE_MULTIPLIER = 7
 
@@ -45,6 +50,7 @@ class AfdSearch(BaseSearch):
         """
         Description:
             Search the maximum attention batch size that satisfies the latency and memory constraints.
+            Uses aichip_config_attn for memory constraint (supports Heterogeneous mode).
         Returns:
             attn_time: Attention time for per layer per micro batch (μs), float.
             attn_bs: Attention batch size for per micro batch, int.
@@ -59,7 +65,7 @@ class AfdSearch(BaseSearch):
             attn()
             attn_time = attn.e2e_time * SEC_2_US
             attn_latency_constraint = (
-                self.config.tpot * MS_2_US / self.config.model_config.num_layers * 
+                self.config.tpot * MS_2_US / self.config.model_config.num_layers *
                 (1 + self.config.multi_token_ratio) / self.config.micro_batch_num
             )
 
@@ -69,12 +75,13 @@ class AfdSearch(BaseSearch):
                 kv_size, attn_static_memory, _, _ = self.compute_GQA_memory_size(self.config.model_config, attn_bs)
             attn_memory = kv_size * self.config.micro_batch_num + attn_static_memory
 
-            if attn_time > attn_latency_constraint or attn_memory > self.config.aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO:
+            # Use aichip_config_attn for attention memory constraint
+            if attn_time > attn_latency_constraint or attn_memory > self.config.aichip_config_attn.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO:
                 attn_bs_max = attn_bs
             else:
                 attn_bs_min = attn_bs
 
-        if attn_time > attn_latency_constraint or attn_memory > self.config.aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO:
+        if attn_time > attn_latency_constraint or attn_memory > self.config.aichip_config_attn.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO:
             attn_bs = attn_bs_min
             self.config.attn_bs = attn_bs
             attn = get_model(self.config)["attn"]
@@ -85,8 +92,9 @@ class AfdSearch(BaseSearch):
     def search(self, attn_time: float, attn_bs: int):
         '''
         Description:
-            Search the optimal attention batch size, 
+            Search the optimal attention batch size,
             attention die count, FFN die count for the model used AFD serving.
+            In Heterogeneous mode, attention and FFN can run on different device types.
         Args:
             attn_time: Attention time for per layer per micro batch (μs), float.
             attn_bs: Attention batch size for per micro batch, int.
@@ -113,7 +121,23 @@ class AfdSearch(BaseSearch):
 
         # search ffn_die, attn_die
         self.config.attn_bs = attn_bs
-        min_ffn_die, max_ffn_die, ffn_die_step = self.config.min_die, self.config.max_die + 1, self.config.die_step
+
+        # Get die ranges based on deployment mode
+        if self.config.deployment_mode == "Heterogeneous":
+            min_ffn_die = self.config.min_die2
+            max_ffn_die = self.config.max_die2 + 1
+            ffn_die_step = self.config.die_step2
+            min_attn_die = self.config.min_die
+            max_attn_die = self.config.max_die + 1
+            attn_die_step = self.config.die_step
+        else:
+            min_ffn_die = self.config.min_die
+            max_ffn_die = self.config.max_die + 1
+            ffn_die_step = self.config.die_step
+            min_attn_die = None  # Will be derived from ffn_die in homogeneous mode
+            max_attn_die = None
+            attn_die_step = self.config.die_step
+
         for ffn_die in range(min_ffn_die, max_ffn_die, ffn_die_step):
             routed_expert_per_die = self.config.model_config.n_shared_experts + max(
                 MIN_ROUTED_EXPERT_PER_DIE,
@@ -121,13 +145,35 @@ class AfdSearch(BaseSearch):
             )
             ffn_static_memory = per_router_expert_memory * routed_expert_per_die
             self.config.routed_expert_per_die = routed_expert_per_die
-            if ffn_static_memory > self.config.aichip_config.aichip_memory * MEMORY_THRESHOLD_RATIO:
+            # Use aichip_config_ffn for FFN memory constraint
+            if ffn_static_memory > self.config.aichip_config_ffn.aichip_memory * MEMORY_THRESHOLD_RATIO:
                 continue
 
-            for attn_die in range(ffn_die, self.ATTN_DIE_MULTIPLIER * ffn_die, ffn_die_step):
+            # Determine attention die range
+            if self.config.deployment_mode == "Heterogeneous":
+                # In Heterogeneous mode, iterate over separate attention die range
+                attn_die_start = min_attn_die
+                attn_die_end = max_attn_die
+            else:
+                # In Homogeneous mode, keep the original behavior
+                attn_die_start = ffn_die
+                attn_die_end = self.ATTN_DIE_MULTIPLIER * ffn_die
+
+            for attn_die in range(attn_die_start, attn_die_end, attn_die_step):
                 total_die = ffn_die + attn_die
-                if total_die % self.config.aichip_config.num_dies_per_node != 0:
-                    continue
+
+                # Node alignment check based on deployment mode
+                if self.config.deployment_mode == "Heterogeneous":
+                    # In Heterogeneous mode, check alignment for each device type separately
+                    if attn_die % self.config.aichip_config_attn.num_dies_per_node != 0:
+                        continue
+                    if ffn_die % self.config.aichip_config_ffn.num_dies_per_node != 0:
+                        continue
+                else:
+                    # In Homogeneous mode, check total_die alignment
+                    if total_die % self.config.aichip_config.num_dies_per_node != 0:
+                        continue
+
                 self.config.ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok * attn_die / ffn_die
                 self.config.attn_die = attn_die
                 self.config.ffn_die = ffn_die
@@ -145,16 +191,17 @@ class AfdSearch(BaseSearch):
                 )
 
                 e2e_time = (
-                    e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace + 
+                    e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace +
                     e2e_time_per_moe_layer * self.config.model_config.num_moe_layers
                 )
                 throughput = (
-                    attn_bs * self.config.micro_batch_num * attn_die / total_die / e2e_time * 
+                    attn_bs * self.config.micro_batch_num * attn_die / total_die / e2e_time *
                     (1 + self.config.multi_token_ratio) * SEC_2_US
                 )
 
                 logging.info(f"-------AFD Search Result:-------")
                 logging.info(
+                    f"deployment_mode: {self.config.deployment_mode}, "
                     f"attn_bs: {attn_bs}, ffn_bs: {self.config.ffn_bs}, "
                     f"kv_len: {self.config.kv_len}, attn_die: {attn_die}, "
                     f"ffn_die: {ffn_die}, total_die: {total_die}, "
@@ -171,31 +218,41 @@ class AfdSearch(BaseSearch):
                     attn_bs, self.config.ffn_bs, self.config.kv_len, attn_die, ffn_die, total_die,
                     attn_time, moe_time, dispatch_time, combine_time, commu_time, e2e_time / MS_2_US,
                     e2e_time_per_dense_layer, e2e_time_per_moe_layer, throughput,
-                    kv_size, attn_static_memory, mlp_static_memory, ffn_static_memory
+                    kv_size, attn_static_memory, mlp_static_memory, ffn_static_memory,
+                    self.config.deployment_mode, self.config.device_type.name, self.config.device_type2.name
                 ])
 
         columns = [
             'attn_bs', 'ffn_bs', 'kv_len', 'attn_die', 'ffn_die', 'total_die',
             'attn_time(us)', 'moe_time(us)', 'dispatch_time(us)', 'combine_time(us)', 'commu_time(us)', 'e2e_time(ms)',
             'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
-            'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)'
+            'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
+            'deployment_mode', 'device_type_attn', 'device_type_ffn'
         ]
         df = pd.DataFrame(self.perf_afd_results, columns=columns)
 
-        result_dir = f"data/afd/mbn{self.config.micro_batch_num}/"
-        file_name = f"{self.config.device_type.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
+        # Generate file name and directory based on deployment mode
+        if self.config.deployment_mode == "Heterogeneous":
+            result_dir = f"data/afd/mbn{self.config.micro_batch_num}/heterogeneous/"
+            file_name = f"{self.config.device_type.name}_{self.config.device_type2.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
+        else:
+            result_dir = f"data/afd/mbn{self.config.micro_batch_num}/homogeneous/"
+            file_name = f"{self.config.device_type.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
         os.makedirs(result_dir, exist_ok=True)
         result_path = result_dir + file_name
         df.to_csv(result_path, index=False)
 
-        df_best = df.sort_values(by=['throughput(tokens/die/s)'], ascending=False).drop_duplicates(subset=['total_die'])
-        df_best = df_best.sort_values(by=['total_die'], ascending=True)
-        best_result_dir = result_dir + "best/"
-        best_file_name = f"{self.config.device_type.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
-        os.makedirs(best_result_dir, exist_ok=True)
-        best_result_path = best_result_dir + best_file_name
-        df_best.to_csv(best_result_path, index=False)
+        if len(df) > 0:
+            df_best = df.sort_values(by=['throughput(tokens/die/s)'], ascending=False).drop_duplicates(subset=['total_die'])
+            df_best = df_best.sort_values(by=['total_die'], ascending=True)
+            if self.config.deployment_mode == "Heterogeneous":
+                best_result_dir = f"data/afd/mbn{self.config.micro_batch_num}/best/heterogeneous/"
+            else:
+                best_result_dir = f"data/afd/mbn{self.config.micro_batch_num}/best/homogeneous/"
+            os.makedirs(best_result_dir, exist_ok=True)
+            best_result_path = best_result_dir + file_name
+            df_best.to_csv(best_result_path, index=False)
 
     def deployment(self):
-        attn_time, attn_bs= self.search_attn_bs()
+        attn_time, attn_bs = self.search_attn_bs()
         self.search(attn_time, attn_bs)

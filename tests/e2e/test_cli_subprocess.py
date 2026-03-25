@@ -4,13 +4,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
 
 @pytest.mark.e2e
 @pytest.mark.build
-def test_cli_deepep_minimal_grid(repo_root: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("deployment_mode", ["Homogeneous", "Heterogeneous"])
+def test_cli_deepep_minimal_grid(
+    repo_root: Path, tmp_path: Path, deployment_mode: str
+) -> None:
     env = {
         **os.environ,
         "LIGHT_LLM_SKIP_POST_PLOTS": "1",
@@ -39,9 +43,24 @@ def test_cli_deepep_minimal_grid(repo_root: Path, tmp_path: Path) -> None:
         "2",
         "--max_attn_bs",
         "64",
+        "--deployment_mode",
+        deployment_mode,
     ]
+    # Add heterogeneous-specific arguments
+    if deployment_mode == "Heterogeneous":
+        cmd.extend([
+            "--device_type2",
+            "Nvidia_A100_SXM",
+            "--min_die2",
+            "8",
+            "--max_die2",
+            "16",
+            "--die_step2",
+            "8",
+        ])
+
     subprocess.run(cmd, cwd=tmp_path, env=env, check=True)
-    deepep = tmp_path / "data" / "deepep"
+    deepep = tmp_path / "data" / "deepep" / deployment_mode.lower()
     assert deepep.is_dir()
     assert list(deepep.glob("*.csv"))
 

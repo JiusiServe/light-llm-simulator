@@ -109,7 +109,7 @@ class DeepSeekV3DecodeMLP(BaseModule):
         bs: The batch size of the MLP.
     """
     def __init__(self, config: Config):
-        super().__init__(config)
+        super().__init__(config, hw_type="ffn")
         self.commu_time: float = 0.0
         self.dispatch_time: float = 0.0
         self.combine_time: float = 0.0
@@ -175,7 +175,7 @@ class DeepSeekV3DecodeMoe(BaseModule):
         combine_time: The combine time of the MoE.
     """
     def __init__(self, config: Config):
-        super().__init__(config)
+        super().__init__(config, hw_type="ffn")
         self.tokens_per_ffn_die = config.ffn_bs * config.seq_len
         self.routed_expert_per_die = config.routed_expert_per_die
         self.commu_time: float = 0.0

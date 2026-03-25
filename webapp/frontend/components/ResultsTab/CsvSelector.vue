@@ -21,8 +21,26 @@
       </label>
 
       <label class="field">
-        <span>Device Type</span>
+        <span>Deployment Mode</span>
+        <select v-model="selection.deploymentMode">
+          <option v-for="mode in deploymentModes" :key="mode.value" :value="mode.value">
+            {{ mode.label }}
+          </option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>{{ deviceTypeLabel }}</span>
         <select v-model="selection.deviceType">
+          <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
+            {{ device.label }}
+          </option>
+        </select>
+      </label>
+
+      <label class="field" v-if="selection.deploymentMode === 'Heterogeneous'">
+        <span>{{ deviceType2Label }}</span>
+        <select v-model="selection.deviceType2">
           <option v-for="device in deviceOptions" :key="device.value" :value="device.value">
             {{ device.label }}
           </option>
@@ -79,7 +97,9 @@
 <script>
 const DEFAULT_SELECTION = {
   servingMode: 'AFD',
-  deviceType: 'ASCENDA3_Pod',
+  deploymentMode: 'Heterogeneous',
+  deviceType: 'ASCENDDAVID120',
+  deviceType2: 'ASCEND910B2',
   modelType: 'DEEPSEEK_V3',
   tpot: 50,
   kvLen: 4096,
@@ -90,6 +110,11 @@ const DEFAULT_SELECTION = {
 const SERVING_MODES = [
   { value: 'AFD', label: 'AFD' },
   { value: 'DeepEP', label: 'DeepEP' }
+];
+
+const DEPLOYMENT_MODES = [
+  { value: 'Homogeneous', label: 'Homogeneous' },
+  { value: 'Heterogeneous', label: 'Heterogeneous' }
 ];
 
 const MODEL_OPTIONS = [
@@ -120,7 +145,9 @@ function createSelection() {
 function normalizeSelection(selection, includeTotalDie = false) {
   const normalized = {
     servingMode: selection.servingMode || DEFAULT_SELECTION.servingMode,
+    deploymentMode: selection.deploymentMode || DEFAULT_SELECTION.deploymentMode,
     deviceType: selection.deviceType || DEFAULT_SELECTION.deviceType,
+    deviceType2: selection.deviceType2 || DEFAULT_SELECTION.deviceType2,
     modelType: selection.modelType || DEFAULT_SELECTION.modelType,
     tpot: Number(selection.tpot) || DEFAULT_SELECTION.tpot,
     kvLen: Number(selection.kvLen) || DEFAULT_SELECTION.kvLen,
@@ -137,7 +164,7 @@ function normalizeSelection(selection, includeTotalDie = false) {
 export default {
   emits: ['csv-loaded'],
   setup(props, { emit }) {
-    const { ref, watch, onMounted } = window.LightLLMRuntime.Vue;
+    const { ref, watch, onMounted, computed } = window.LightLLMRuntime.Vue;
     const { useApi, useStore } = window.LightLLMRuntime;
     const api = useApi();
     const { getCsvSelection, setCsvSelection } = useStore();
@@ -147,6 +174,20 @@ export default {
     });
     const isLoading = ref(false);
     const error = ref(null);
+
+    const deviceTypeLabel = computed(() => {
+      if (selection.value.servingMode === 'AFD' && selection.value.deploymentMode === 'Heterogeneous') {
+        return 'Device Type (Attention)';
+      }
+      return 'Device Type';
+    });
+
+    const deviceType2Label = computed(() => {
+      if (selection.value.servingMode === 'AFD' && selection.value.deploymentMode === 'Heterogeneous') {
+        return 'Device Type 2 (FFN)';
+      }
+      return 'Device Type 2';
+    });
 
     watch(
       selection,
@@ -164,7 +205,9 @@ export default {
       try {
         const data = await api.fetchCsvResults({
           serving_mode: params.servingMode,
+          deployment_mode: params.deploymentMode,
           device_type: params.deviceType,
+          device_type2: params.deviceType2,
           model_type: params.modelType,
           tpot: String(params.tpot),
           kv_len: String(params.kvLen),
@@ -191,7 +234,10 @@ export default {
       selection,
       isLoading,
       error,
+      deviceTypeLabel,
+      deviceType2Label,
       servingModes: SERVING_MODES,
+      deploymentModes: DEPLOYMENT_MODES,
       modelOptions: MODEL_OPTIONS,
       deviceOptions: DEVICE_OPTIONS,
       tpotOptions: TPOT_OPTIONS,

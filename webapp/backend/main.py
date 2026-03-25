@@ -49,6 +49,12 @@ class RunRequest(BaseModel):
     multi_token_ratio: float = 0.7
     attn_tensor_parallel: int = 1
     ffn_tensor_parallel: int = 1
+    # Heterogeneous mode parameters
+    deployment_mode: str = "Homogeneous"
+    device_type2: Optional[str] = None
+    min_die2: Optional[int] = None
+    max_die2: Optional[int] = None
+    die_step2: Optional[int] = None
 
 
 def _sanitize_args(req: RunRequest) -> List[str]:
@@ -65,6 +71,7 @@ def _sanitize_args(req: RunRequest) -> List[str]:
         "--multi_token_ratio", str(req.multi_token_ratio),
         "--attn_tensor_parallel", str(req.attn_tensor_parallel),
         "--ffn_tensor_parallel", str(req.ffn_tensor_parallel),
+        "--deployment_mode", req.deployment_mode,
     ]
     if req.die_step is not None:
         args += ["--die_step", str(req.die_step)]
@@ -74,6 +81,16 @@ def _sanitize_args(req: RunRequest) -> List[str]:
         args += ["--kv_len"] + [str(x) for x in req.kv_len]
     if req.micro_batch_num:
         args += ["--micro_batch_num"] + [str(x) for x in req.micro_batch_num]
+    # Heterogeneous mode parameters
+    if req.deployment_mode == "Heterogeneous":
+        if req.device_type2:
+            args += ["--device_type2", req.device_type2]
+        if req.min_die2 is not None:
+            args += ["--min_die2", str(req.min_die2)]
+        if req.max_die2 is not None:
+            args += ["--max_die2", str(req.max_die2)]
+        if req.die_step2 is not None:
+            args += ["--die_step2", str(req.die_step2)]
     return args
 
 
@@ -116,7 +133,22 @@ def get_logs(run_id: str):
 
 
 @api.get("/results")
-def list_results(model_type: str, device_type: str, total_die: int, tpot: int, kv_len: int):
+def list_results(
+    model_type: str,
+    device_type: str,
+    total_die: int,
+    tpot: int,
+    kv_len: int,
+    deployment_mode: str = "Homogeneous",
+    device_type2: Optional[str] = None
+):
+    # Validate deployment_mode
+    if deployment_mode not in ("Homogeneous", "Heterogeneous"):
+        raise HTTPException(status_code=400, detail=f"Invalid deployment_mode: {deployment_mode}. Must be 'Homogeneous' or 'Heterogeneous'")
+    # Validate device_type2 is provided when deployment_mode is Heterogeneous
+    if deployment_mode == "Heterogeneous" and not device_type2:
+        raise HTTPException(status_code=400, detail="device_type2 is required when deployment_mode is 'Heterogeneous'")
+
     repo_root = Path(__file__).resolve().parents[2]
     data_root = repo_root / "data"
 
@@ -128,16 +160,31 @@ def list_results(model_type: str, device_type: str, total_die: int, tpot: int, k
                 existing.append(relative_url)
         return existing
 
-    throughput_candidates = [
-        f"/data/images/throughput/{device_type}-{model_type}-mbn2-total_die{total_die}.png",
-        f"/data/images/throughput/{device_type}-{model_type}-mbn3-total_die{total_die}.png",
-        f"/data/images/throughput/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.png",
-    ]
-    pipeline_candidates = [
-        f"/data/images/pipeline/mbn2/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
-        f"/data/images/pipeline/mbn3/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
-        f"/data/images/pipeline/deepep/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-total_die{total_die}.png",
-    ]
+    # Build image candidates based on deployment mode
+    if deployment_mode == "Heterogeneous":
+        # Heterogeneous mode
+        throughput_candidates = [
+            f"/data/images/throughput/heterogeneous/{device_type}_{device_type2}-{model_type}-mbn2-total_die{total_die}.png",
+            f"/data/images/throughput/heterogeneous/{device_type}_{device_type2}-{model_type}-mbn3-total_die{total_die}.png",
+            f"/data/images/throughput/heterogeneous/{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}.png",
+        ]
+        pipeline_candidates = [
+            f"/data/images/pipeline/deepep/heterogeneous/{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-deepep-mbn1-total_die{total_die}.png",
+            f"/data/images/pipeline/afd/heterogeneous/{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-afd-mbn2-total_die{total_die}.png",
+            f"/data/images/pipeline/afd/heterogeneous/{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-afd-mbn3-total_die{total_die}.png",
+        ]
+    else:
+        # Homogeneous mode
+        throughput_candidates = [
+            f"/data/images/throughput/homogeneous/{device_type}-{model_type}-mbn2-total_die{total_die}.png",
+            f"/data/images/throughput/homogeneous/{device_type}-{model_type}-mbn3-total_die{total_die}.png",
+            f"/data/images/throughput/homogeneous/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.png",
+        ]
+        pipeline_candidates = [
+            f"/data/images/pipeline/deepep/homogeneous/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-deepep-mbn1-total_die{total_die}.png",
+            f"/data/images/pipeline/afd/homogeneous/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-afd-mbn2-total_die{total_die}.png",
+            f"/data/images/pipeline/afd/homogeneous/{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}-afd-mbn3-total_die{total_die}.png",
+        ]
     throughput_images = existing_image_urls(throughput_candidates)
     pipeline_images = existing_image_urls(pipeline_candidates)
     return {"throughput_images": throughput_images, "pipeline_images": pipeline_images}
@@ -203,17 +250,38 @@ def fetch_csv_results(
     tpot: int,
     kv_len: int,
     serving_mode: str = "AFD",
+    deployment_mode: str = "Homogeneous",
+    device_type2: Optional[str] = None,
     micro_batch_num: Optional[int] = 1,
     total_die: Optional[int] = None,
 ):
+    # Validate deployment_mode
+    if deployment_mode not in ("Homogeneous", "Heterogeneous"):
+        raise HTTPException(status_code=400, detail=f"Invalid deployment_mode: {deployment_mode}. Must be 'Homogeneous' or 'Heterogeneous'")
+    # Validate device_type2 is provided when deployment_mode is Heterogeneous
+    if deployment_mode == "Heterogeneous" and not device_type2:
+        raise HTTPException(status_code=400, detail="device_type2 is required when deployment_mode is 'Heterogeneous'")
+
     repo_root = Path(__file__).resolve().parents[2]
     if serving_mode == "AFD":
-        dir_name = repo_root / "data" / "afd" / f"mbn{micro_batch_num}" / "best"
+        if deployment_mode == "Heterogeneous":
+            dir_name = repo_root / "data" / "afd" / f"mbn{micro_batch_num}" / "best" / "heterogeneous"
+        else:
+            dir_name = repo_root / "data" / "afd" / f"mbn{micro_batch_num}" / "best" / "homogeneous"
     elif serving_mode == "DeepEP":
-        dir_name = repo_root / "data" / "deepep"
+        if deployment_mode == "Heterogeneous":
+            dir_name = repo_root / "data" / "deepep" / "heterogeneous"
+        else:
+            dir_name = repo_root / "data" / "deepep" / "homogeneous"
     else:
         raise HTTPException(status_code=400, detail="Unsupported serving_mode")
-    file_name = f"{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
+
+    # Determine file name (no -heterogeneous suffix since we use directory structure)
+    if deployment_mode == "Heterogeneous":
+        file_name = f"{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
+    else:
+        file_name = f"{device_type}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
+
     path = dir_name / file_name
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"file not found: {path}")
