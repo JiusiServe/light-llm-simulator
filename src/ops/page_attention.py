@@ -1,4 +1,7 @@
 from src.ops.base import BaseOp
+from conf.common import BLOCK_SIZE
+from conf.common import US_2_SEC
+import math
 
 
 class MLAFlashAttentionFP16(BaseOp):
@@ -21,7 +24,7 @@ class MLAFlashAttentionFP16(BaseOp):
             self.kv_len * (2 * self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim)
         )
         self.softmax_flops =(
-            4 * self.attn_bs * self.model_config.num_attention_heads * self.kv_len
+            5 * self.attn_bs * self.model_config.num_attention_heads * self.kv_len
         )
         # matrix absorption
         self.uv_absorb_flops =(
@@ -36,12 +39,16 @@ class MLAFlashAttentionFP16(BaseOp):
         return self.compute_time
 
     def memory_cost(self):
-        self.bytes = (
-            self.elem_size * self.attn_bs * self.kv_len *
-            (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim) +
-            self.elem_size * self.model_config.kv_lora_rank *
-            self.model_config.num_attention_heads * self.model_config.v_head_dim
-        )
+        # q_block: [B, n/tp, S, (512+64)] fp16
+        q_block = 2 * self.attn_bs * self.model_config.num_attention_heads * self.seq_len * (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim)
+        # kv_nope_block: [B, 1, KV, 512] fp16
+        kv_nope_block = 2 * self.attn_bs * self.kv_len * self.model_config.kv_lora_rank
+        # kv_rope_block: [B, 1, KV, 64] fp16
+        kv_rope_block = 2 * self.attn_bs * self.kv_len * self.model_config.qk_rope_head_dim
+        # o_block: [B, n/tp, S, 512] fp16
+        o_block = 2 * self.attn_bs * self.model_config.num_attention_heads * self.seq_len * self.model_config.kv_lora_rank
+
+        self.bytes = q_block + kv_nope_block + kv_rope_block + o_block
         self.memory_time = self.bytes / self.local_memory_bandwidth
         return self.memory_time
 
@@ -58,87 +65,76 @@ class MLAFlashAttentionInt8(BaseOp):
         self.attn_bs = config.attn_bs
         self.kv_len = config.kv_len
         self.seq_len = config.seq_len
-        super().__init__("MLAFlashAttentionInt8", config.aichip_config, elem_size)
-
-    def op_compute_disc(self):
-        if self.attn_bs < 32:
-            if self.kv_len == 2048:
-                return 0.4
-            elif self.kv_len == 4096:
-                return 0.45
-            elif self.kv_len == 8192:
-                return 0.5
-            else:
-                return 0.55
-        elif self.attn_bs >= 32 and self.attn_bs < 64:
-            if self.kv_len == 2048:
-                return 0.45
-            elif self.kv_len == 4096:
-                return 0.5
-            elif self.kv_len == 8192:
-                return 0.55
-            else:
-                return 0.6
-        else:
-            if self.kv_len == 2048:
-                return 0.5
-            elif self.kv_len == 4096:
-                return 0.55
-            elif self.kv_len == 8192:
-                return 0.6
-            else:
-                return 0.65
+        self.static_cost = 30 * US_2_SEC
+        super().__init__("MLAFlashAttentionInt8", config.aichip_config, elem_size, static_cost=self.static_cost)
+        self.memory_ratio = 0.8
 
     def compute_cost(self):
         # qk_position = 2*B*128/TP*S*64*KV
-        # FP16, cube core
+        # BF16, cube core
         # - q_rope = [B, 128/TP, S, 64]
-        # - k_rope = [B, 1, KV, 64] (trans) [B, 1, 64, KV]
-        # - output_qk = [B, 128/TP, S, KV]
+        # - k_rope = [B, 128/TP, KV, 64] (trans) [B, 128/TP, 64, KV]
+        # - output_qk_rope = [B, 128/TP, S, KV]
         qk_rope = (
             2 * self.attn_bs * self.model_config.num_attention_heads *
             self.seq_len * self.model_config.qk_rope_head_dim * self.kv_len
         )
         # qk_matmul = 2*B*128/TP*S*512*KV
-        # FP16, cube core
-        # - qk = [B, 128/TP, S, 512]
-        # - kv_nope = [B, 1, KV, 512] (trans) [B, 1, 512, KV]
-        # - output_qkv = [B, 128/TP, S, KV]
+        # INT8, cube core
+        # - q_nope = [B, 128/TP, S, 512]
+        # - k_nope = [B, 128/TP, KV, 512] (trans) [B, 128/TP, 512, KV]
+        # - output_qk_nope = [B, 128/TP, S, KV]
         qk_matmul =(
             2 * self.attn_bs * self.model_config.num_attention_heads *
             self.seq_len * self.model_config.kv_lora_rank * self.kv_len
         )
-        # (output_qk + output_qkv) -> safe_softmax = 5*[B, 128/TP, S, KV]
-        # FP16, vector core
+        # (output_qk + output_qkv) -> softmax = 5*[B, 128/TP, S, KV]
+        # BF16, vector core
         # - output_qk = [B, 128/TP, S, KV]
-        # - output_qkv = [B, 128/TP, S, KV]
+        # - output_qk = [B, 128/TP, S, KV]
         # - output_softmax = [B, 128/TP, S, KV]
         softmax =(
             5 * self.attn_bs * self.model_config.num_attention_heads *
             self.seq_len * self.kv_len
         )
         # qkv_matmul = 2*B*128/TP*S*KV*512
-        # FP16, cube core
+        # INT8, cube core
         # - output_softmax = [B, 128/TP, S, KV]
-        # - kv_nope = [B, 1, KV, 512]
+        # - v_nope = [B, 128/TP, KV, 512]
         # - output_matmul = [B, 128/TP, S, 512]
         sv_matmul =(
             2 * self.attn_bs * self.model_config.num_attention_heads *
             self.seq_len * self.kv_len * self.model_config.kv_lora_rank
         )
-        cube_time = qk_rope / self.cube_flops_fp16 + (qk_matmul + sv_matmul)/ self.cube_flops_int8
-        vec_time = softmax / self.vec_flops_fp16
-        self.compute_time = cube_time + vec_time
+
+        self.total_computation = qk_rope + qk_matmul + softmax + sv_matmul
+        qk_rope_time = qk_rope / self.cube_flops_fp16
+        qk_matmul_time = qk_matmul / self.cube_flops_int8
+        softmax_time = softmax / self.vec_flops_fp16
+        sv_matmul_time = sv_matmul / self.cube_flops_int8
+        self.compute_time = qk_rope_time + qk_matmul_time + softmax_time + sv_matmul_time
         return self.compute_time
 
     def memory_cost(self):
-        self.bytes = (
-            self.attn_bs * self.kv_len * 
-            (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim) +
-            self.model_config.kv_lora_rank*self.model_config.num_attention_heads *
-            self.model_config.v_head_dim
-        )
-        self.memory_time = self.bytes / self.local_memory_bandwidth
+        # q_nope_block: [B, S, n/tp, 512] INT8
+        q_nope_block = self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.kv_lora_rank
+        # q_rope_block: [B, S, n/tp, 64] BF16
+        q_rope_block = 2 * self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.qk_rope_head_dim
+        # kv_nope_block: [block_num, 1, block_size, 512] INT8
+        # key_nope and value_nope are loaded separately
+        block_num = math.ceil(self.attn_bs * self.kv_len / BLOCK_SIZE)
+        # int8
+        kv_nope_block = 2 * block_num * BLOCK_SIZE * self.model_config.kv_lora_rank
+        # bf16 [vllm-ascend only support bf16]
+        # kv_nope_block = 4 * block_num * BLOCK_SIZE * self.model_config.kv_lora_rank
+        # kv_rope_block: [block_num, 1, n/tp, 64] BF16
+        # key_rope and value_rope are loaded separately
+        kv_rope_block = 4 * block_num * BLOCK_SIZE * self.model_config.qk_rope_head_dim
+        # o_block: [B, S, n/tp, 512] BF16
+        o_block = 2 * self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.kv_lora_rank
+
+        self.total_data_movement = q_nope_block + q_rope_block + kv_nope_block + kv_rope_block + o_block
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth / self.memory_ratio
         return self.memory_time
 
 
@@ -158,7 +154,7 @@ class GQAFlashAttentionFP16(BaseOp):
         self.seq_len = config.seq_len
 
     def op_compute_disc(self):
-        return 0.34
+        return 0.651
 
     def compute_cost(self):
         # qk_matmul: 2*B*n*s*D*kv
@@ -195,7 +191,9 @@ class GQAFlashAttentionFP16(BaseOp):
         return self.compute_time
 
     def memory_cost(self):
-        # kv_cache
+        # q_block: [B, n, s, D]
+        # kv_cache: [B, n_kv, kv, D]
+        # o_block: [B, n, s, D]
         self.bytes = (
             2 * self.elem_size *
             self.attn_bs *

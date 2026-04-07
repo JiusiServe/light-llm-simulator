@@ -30,16 +30,16 @@ def _base_config(model_type: str) -> Config:
 @pytest.mark.unit
 def test_get_model_deepseek_v3_keys() -> None:
     m = get_model(_base_config("deepseek-ai/DeepSeek-V3"))
-    assert set(m.keys()) == {"attn", "mlp", "moe"}
+    assert set(m.keys()) == {"embedding", "attn", "mlp", "moe", "lm_head"}
 
 
 @pytest.mark.unit
 def test_get_model_qwen_keys() -> None:
     m = get_model(_base_config("Qwen/Qwen3-235B-A22B"))
-    assert set(m.keys()) == {"attn", "moe"}
+    assert set(m.keys()) == {"embedding", "attn", "moe", "lm_head"}
 
 
 @pytest.mark.unit
 def test_get_model_deepseek_v2_lite_keys() -> None:
     m = get_model(_base_config("deepseek-ai/DeepSeek-V2-Lite"))
-    assert set(m.keys()) == {"attn", "mlp", "moe"}
+    assert set(m.keys()) == {"embedding", "attn", "mlp", "moe", "lm_head"}

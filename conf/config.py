@@ -1,11 +1,23 @@
 from conf.model_config import ModelConfig, ModelType
 from conf.hardware_config import HWConf, DeviceType
-from conf.common import MIN_ROUTED_EXPERT_PER_DIE
 import math
 from typing import Optional
 
 
 class Config:
+    @staticmethod
+    def calc_routed_expert_per_die(n_routed_experts: int, n_shared_experts: int, ffn_die: int) -> int:
+        """Calculate routed_expert_per_die based on FFN die count."""
+        if ffn_die < 64:
+            # router + shared expert
+            return n_shared_experts + math.ceil(n_routed_experts / ffn_die)
+        elif ffn_die < 128:
+            # router + shared expert + 1 redundant expert for EPLB
+            return n_shared_experts + math.ceil(n_routed_experts / ffn_die) + 1
+        else:
+            # router + 1 redundant experts for EPLB
+            return math.ceil(n_routed_experts / ffn_die) + 1
+
     def __init__(
         self,
         serving_mode: str,
@@ -115,7 +127,6 @@ class Config:
         self.ffn_bs = self.attn_bs * self.model_config.num_experts_per_tok
         self.attn_die = min_die
         self.ffn_die = min_die
-        self.routed_expert_per_die = max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.model_config.n_routed_experts / self.ffn_die)
-            )
+        self.routed_expert_per_die = Config.calc_routed_expert_per_die(
+            self.model_config.n_routed_experts, self.model_config.n_shared_experts, self.ffn_die
+        )

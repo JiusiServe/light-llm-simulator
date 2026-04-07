@@ -127,7 +127,7 @@ class ModelConfig:
 
         configs = {
             ModelType.DEEPSEEK_V3: cfg(
-                model_size_b=671, hidden_size=7168, max_kv_length=128000, intermediate_size=18432,
+                model_size_b=671, hidden_size=7168, max_kv_length=131072, intermediate_size=18432,
                 kv_lora_rank=512, max_position_embeddings=163840, moe_intermediate_size=2048,
                 first_k_dense_replace=3, n_routed_experts=256, n_shared_experts=1,
                 num_attention_heads=128, num_experts_per_tok=8, num_layers=61, num_moe_layers=58,

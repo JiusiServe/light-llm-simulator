@@ -45,6 +45,7 @@ data/
 
 # Logs
 *.log
+webapp/runs
 
 # Claude Code
 .claude/
