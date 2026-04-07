@@ -150,8 +150,9 @@ const DEVICE_OPTIONS = [
   { value: 'Ascend_910b3', label: 'Ascend 910B3' },
   { value: 'Ascend_910b4', label: 'Ascend 910B4' },
   { value: 'Ascend_A3Pod', label: 'Ascend A3Pod' },
-  { value: 'Ascend_David121', label: 'Ascend David121' },
+  { value: 'Ascend_David100', label: 'Ascend David100' },
   { value: 'Ascend_David120', label: 'Ascend David120' },
+  { value: 'Ascend_David121', label: 'Ascend David121' },
   { value: 'Nvidia_A100_SXM', label: 'Nvidia A100 SXM' },
   { value: 'Nvidia_H100_SXM', label: 'Nvidia H100 SXM' }
 ];
