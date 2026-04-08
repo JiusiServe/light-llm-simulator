@@ -1,6 +1,6 @@
 <template>
   <div class="config-section">
-    <h3>Hardware Configuration</h3>
+    <h3>{{ label }} Configuration</h3>
 
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
@@ -74,6 +74,10 @@ export default {
     deviceType: {
       type: String,
       default: DEFAULT_DEVICE_TYPE
+    },
+    label: {
+      type: String,
+      default: 'Hardware'
     }
   },
   setup(props) {
