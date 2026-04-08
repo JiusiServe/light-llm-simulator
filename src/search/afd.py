@@ -209,6 +209,9 @@ class AfdSearch(BaseSearch):
                 lm_head = model["lm_head"]
                 lm_head()
                 lm_head_time = lm_head.e2e_time * SEC_2_US
+                a2e_send = attn.a2e_send.e2e_time
+                a2e_recv = attn.a2e_recv.e2e_time
+                e2a_recv = moe.e2a_recv.e2e_time
                 e2e_time = e2e_time + embedding_time + lm_head_time
 
                 if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
@@ -230,9 +233,9 @@ class AfdSearch(BaseSearch):
                     f"kv_len: {self.config.kv_len}, attn_die: {attn_die}, "
                     f"ffn_die: {ffn_die}, total_die: {total_die}, "
                     f"attn_time: {attn_time:.2f}us, moe_time: {moe_time:.2f}us, "
+                    f"a2e_send: {a2e_send:.2f}us, a2e_recv: {a2e_recv:.2f}us, "
                     f"dispatch_time: {dispatch_time:.2f}us, combine_time: {combine_time:.2f}us, "
-                    f"commu_time: {commu_time:.2f}us, "
-                    f"e2e_time: {e2e_time:.2f}ms, "
+                    f"e2a_recv: {e2a_recv:.2f}us, commu_time: {commu_time:.2f}us, e2e_time: {e2e_time:.2f}ms, "
                     f"e2e_time_per_dense_layer: {e2e_time_per_dense_layer:.2f}us, "
                     f"e2e_time_per_moe_layer: {e2e_time_per_moe_layer:.2f}us, throughput: {throughput:.2f} tokens/die/s, "
                     f"kv_size:{kv_size} GB, attn_static_memory:{attn_static_memory} GB, "
@@ -241,16 +244,16 @@ class AfdSearch(BaseSearch):
 
                 self.perf_afd_results.append([
                     attn_bs, self.config.ffn_bs, self.config.kv_len, attn_die, ffn_die, total_die,
-                    attn_time, moe_time, dispatch_time, combine_time, commu_time, e2e_time / MS_2_US,
-                    e2e_time_per_dense_layer, e2e_time_per_moe_layer, throughput,
+                    attn_time, moe_time, a2e_send, a2e_recv, dispatch_time, combine_time, e2a_recv, commu_time,
+                    e2e_time / MS_2_US, e2e_time_per_dense_layer, e2e_time_per_moe_layer, throughput,
                     kv_size, attn_static_memory, mlp_static_memory, ffn_static_memory,
                     self.config.deployment_mode, self.config.device_type.name, self.config.device_type2.name
                 ])
 
         columns = [
             'attn_bs', 'ffn_bs', 'kv_len', 'attn_die', 'ffn_die', 'total_die',
-            'attn_time(us)', 'moe_time(us)', 'dispatch_time(us)', 'combine_time(us)', 'commu_time(us)', 'e2e_time(ms)',
-            'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
+            'attn_time(us)', 'moe_time(us)', 'a2e_send(us)', 'a2e_recv(us)', 'dispatch_time(us)', 'combine_time(us)', 'e2a_recv(us)', 'commu_time(us)',
+            'e2e_time(ms)', 'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
             'deployment_mode', 'device_type_attn', 'device_type_ffn'
         ]

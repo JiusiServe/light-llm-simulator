@@ -1,6 +1,7 @@
 from src.ops.base import BaseOp
 from conf.common import US_2_SEC
 import math
+import logging
 
 def calculate_expected_nodes(x, y, k):
     '''
@@ -38,15 +39,28 @@ class Dispatch(BaseOp):
     '''
     def __init__(self, config, elem_size=1):
         self.config = config
-        self.static_cost = 5 * US_2_SEC
+        self.static_cost = 15 * US_2_SEC
         super().__init__("Dispatch", config.aichip_config2, elem_size, self.static_cost)
         self.model_config = config.model_config
 
+    def compute_cost(self):
+        # quant_mode = 2, Dynamic quantization scenarios
+        bs = self.config.attn_bs * self.config.seq_len
+        hidden_size = self.model_config.hidden_size
+        # x_fp32=CastToFp32(x) * scales
+        # x:bf16--->fp32
+        x_fp32 = 2 * bs * hidden_size + 4 * bs * hidden_size
+        # dynamic_scales_value=127.0/Max(Abs(x_fp32))
+        # element_size = 4[fp32],  
+        dynamic_scales_value = 4 * 3 * bs * hidden_size
+        #quant_out=CastToInt8(x_fp32 * dynamic_scales_value)
+        # fp32--->int8
+        quant_out = 4 * 2 * bs * hidden_size
+        self.total_computation = x_fp32 + dynamic_scales_value + quant_out
+        bw = min(self.config.aichip_config.local_memory_bandwidth, self.config.aichip_config2.local_memory_bandwidth) * self.op_memory_disc()
+        self.compute_time = self.total_computation / bw + self.static_cost
+
     def memory_cost(self):
-        coeff = max(
-            self.config.attn_die / self.config.ffn_die,
-            self.config.ffn_die / self.config.attn_die
-        )
         self.inter_node_bandwidth = min(
             self.config.aichip_config.inter_node_bandwidth,
             self.config.aichip_config2.inter_node_bandwidth
@@ -78,8 +92,7 @@ class Dispatch(BaseOp):
             self.config.seq_len *
             self.model_config.hidden_size *
             expected_nodes *
-            self.elem_size *
-            coeff
+            self.elem_size
         )
         dispatch_packet_intra_node = (
             self.config.attn_bs *
@@ -92,21 +105,22 @@ class Dispatch(BaseOp):
             dispatch_packet_inter_node / self.inter_node_bandwidth +
             dispatch_packet_intra_node / self.intra_node_bandwidth
         )
-        if self.config.ffn_die <= 48:
-            a = 1.93
-            b = 34.64
-        elif self.config.ffn_die <= 104:
-            a = 2.02
-            b = 39.56
-        elif self.config.ffn_die <= 216:
-            a = 1.57
-            b = 54.23
-        else:
-            a = 1.00
-            b = 108.09
-        self.memory_time = a * self.memory_time + b * US_2_SEC + self.static_cost
-        self.memory_time = self.memory_time / 2
+        logging.error(
+            f"dispatch_packet_inter_node:{dispatch_packet_inter_node:.2f}, dispatch_packet_intra_node:{dispatch_packet_intra_node:.2f}, "
+            f"memory_time:{self.memory_time * 1e6:.2f}, intra_node_bandwidth:{self.intra_node_bandwidth:.2f}"
+        )
+        self.memory_time = self.memory_time
         return self.memory_time
+
+    def e2e_cost(self):
+        self.e2e_time = self.memory_time + self.compute_time + self.static_cost
+        logging.error(
+            f"name: {self.name}, "
+            f"compute_time: {self.compute_time * 1e6:.2f} us, "
+            f"memory_time: {self.memory_time * 1e6:.2f} us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f} us"
+        )
+        return self.e2e_time
 
 class Combine(BaseOp):
     '''
@@ -118,15 +132,11 @@ class Combine(BaseOp):
     '''
     def __init__(self, config, elem_size=2):
         self.config = config
-        self.static_cost = 5 * US_2_SEC
+        self.static_cost = 15 * US_2_SEC
         super().__init__("Combine", config.aichip_config2, elem_size, self.static_cost)
         self.model_config = config.model_config
 
     def memory_cost(self):
-        coeff = max(
-            self.config.attn_die / self.config.ffn_die,
-            self.config.ffn_die / self.config.attn_die
-        )
         comm_ratio = 1
         self.inter_node_bandwidth = min(
             self.config.aichip_config.inter_node_bandwidth,
@@ -159,8 +169,7 @@ class Combine(BaseOp):
             self.config.seq_len *
             self.model_config.hidden_size *
             expected_nodes *
-            self.elem_size *
-            coeff
+            self.elem_size
         )
         combine_packet_intra_node = (
             self.config.attn_bs *
@@ -173,18 +182,14 @@ class Combine(BaseOp):
             combine_packet_inter_node / self.inter_node_bandwidth +
             combine_packet_intra_node / self.intra_node_bandwidth
         )
-        if self.config.ffn_die <= 48:
-            a = 1.74
-            b = 66.35
-        elif self.config.ffn_die <= 104:
-            a = 1.82
-            b = 75.2
-        elif self.config.ffn_die <= 216:
-            a = 1.41
-            b = 101.62
-        else:
-            a = 0.9
-            b = 198.56
-        self.memory_time = a * self.memory_time + b * US_2_SEC + self.static_cost
-        self.memory_time = self.memory_time / 2
         return self.memory_time
+
+    def e2e_cost(self):
+        self.e2e_time = max(self.memory_time, self.compute_time) + self.static_cost
+        logging.error(
+            f"name: {self.name}, "
+            f"compute_time: {self.compute_time * 1e6:.2f} us, "
+            f"memory_time: {self.memory_time * 1e6:.2f} us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f} us"
+        )
+        return self.e2e_time
