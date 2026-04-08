@@ -1,15 +1,20 @@
 from src.ops.base import BaseOp
-from src.ops.matmul import OpGeMatmul, OpQuantBatchMatmul, OpGroupedMatmul
+from src.ops.matmul import OpMatmul, OpBatchMatmul, OpTransposeBatchMatmul, OpQuantBatchMatmul, OpGroupedMatmul
 from src.ops.page_attention import MLAFlashAttentionFP16, MLAFlashAttentionInt8, GQAFlashAttentionFP16
 from src.ops.swiglu import OpSwiglu
 from src.ops.mla_prolog import OpMlaProlog
 from src.ops.communication import Dispatch, Combine
+from src.ops.p2p import OpA2ESend, OpA2ERecv, OpE2ARecv
 from src.ops.rotary import OpRotary
-from src.ops.norm import OpNorm
+from src.ops.norm import OpAddRmsNorm
+from src.ops.dynamicquant import OpDynamicQuant
+from src.ops.moe_gating import OpMoeGating
 
 __all__ = [
     "BaseOp",
-    "OpGeMatmul",
+    "OpMatmul",
+    "OpBatchMatmul",
+    "OpTransposeBatchMatmul",
     "OpQuantBatchMatmul",
     "OpGroupedMatmul",
     "MLAFlashAttentionFP16",
@@ -19,6 +24,11 @@ __all__ = [
     "OpMlaProlog",
     "Dispatch",
     "Combine",
-    "OpRotary"
-    "OpNorm"
+    "OpA2ESend",
+    "OpA2ERecv",
+    "OpE2ARecv",
+    "OpRotary",
+    "OpAddRmsNorm",
+    "OpDynamicQuant",
+    "OpMoeGating"
 ]

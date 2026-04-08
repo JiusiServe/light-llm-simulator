@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Literal
 from conf.config import Config
 
 
@@ -7,7 +7,7 @@ class BaseModule(ABC):
     """
     Description:
         Base class for all model modules.
-        A model is composed of multiple modules. 
+        A model is composed of multiple modules.
         For example, a DeepSeek V3 model is composed of an attention module, an MLP module and a MoE module.
         Inherit from this class to create a new module.
     Attributes:
@@ -20,11 +20,18 @@ class BaseModule(ABC):
     """
     def __init__(
         self,
-        config: Config
+        config: Config,
+        hw_type: Literal["attn", "ffn"] = "attn"
     ) -> None:
         self.config = config
         self.model_config = config.model_config
-        self.aichip_config = config.aichip_config
+        # Select the appropriate hardware config based on module type
+        # In Heterogeneous mode: attn modules use device_type, ffn modules use device_type2
+        # In Homogeneous mode: both use device_type
+        if hw_type == "attn":
+            self.aichip_config = config.aichip_config_attn
+        else:  # ffn
+            self.aichip_config = config.aichip_config_ffn
 
         self.e2e_time: float = 0.0
         self.compute_time: float = 0.0
@@ -52,11 +59,11 @@ class BaseModule(ABC):
         for op in self.ops:
             op()
 
-    @abstractmethod
     def _aggregate_times(self):
         """
-        Description:
-            Aggregate the times of the operators for the module to obtain 
-            the module's memory time, compute time and end-to-end time.
+        Aggregate times by summing over all ops.
+        Override this method if you need custom aggregation logic.
         """
-        pass
+        self.e2e_time = sum(op.e2e_time for op in self.ops)
+        self.compute_time = sum(op.compute_time for op in self.ops)
+        self.memory_time = sum(op.memory_time for op in self.ops)

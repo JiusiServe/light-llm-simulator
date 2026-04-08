@@ -30,6 +30,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         multi_token_ratio: The acceptance rate of the additionally predicted token.
         attn_tensor_parallel: Number of dies used for tensor model parallelism.
         ffn_tensor_parallel: Number of dies used for tensor model parallelism.
+        deployment_mode: "Homogeneous" or "Heterogeneous" (AFD and DeepEP).
+        device_type2: The second device type for FFN (Heterogeneous mode only).
+        min_die2: The min number of FFN dies to explore (Heterogeneous mode only).
+        max_die2: The max number of FFN dies to explore (Heterogeneous mode only).
+        die_step2: The step size for FFN dies (Heterogeneous mode only).
     """
     parser.add_argument('--serving_mode', type=str, default="AFD")
     parser.add_argument('--model_type', type=str, default="deepseek-ai/DeepSeek-V3")
@@ -46,6 +51,21 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--multi_token_ratio', type=float, default=0.7)
     parser.add_argument('--attn_tensor_parallel', type=int, default=1)
     parser.add_argument('--ffn_tensor_parallel', type=int, default=1)
+    # Heterogeneous mode arguments
+    parser.add_argument('--deployment_mode', type=str, default="Homogeneous",
+                        choices=["Homogeneous", "Heterogeneous"],
+                        help="Deployment mode. Supported for both AFD and DeepEP. "
+                             "Note: DeepEP Heterogeneous runs homogeneous DeepEP on two device types separately "
+                             "and computes weighted average throughput for comparison only, NOT a truly heterogeneous deployment like AFD.")
+    parser.add_argument('--device_type2', type=str, default=None,
+                        help="Second device type for FFN (required for Heterogeneous mode)")
+    parser.add_argument('--min_die2', type=int, default=None,
+                        help="Min FFN dies for Heterogeneous mode")
+    parser.add_argument('--max_die2', type=int, default=None,
+                        help="Max FFN dies for Heterogeneous mode")
+    parser.add_argument('--die_step2', type=int, default=None,
+                        help="Die step for FFN in Heterogeneous mode")
+
 
 def run_search(args):
     """
@@ -72,7 +92,12 @@ def run_search(args):
                         next_n=args.next_n,
                         multi_token_ratio=args.multi_token_ratio,
                         attn_tensor_parallel=args.attn_tensor_parallel,
-                        ffn_tensor_parallel=args.ffn_tensor_parallel
+                        ffn_tensor_parallel=args.ffn_tensor_parallel,
+                        deployment_mode=args.deployment_mode,
+                        device_type2=args.device_type2,
+                        min_die2=args.min_die2,
+                        max_die2=args.max_die2,
+                        die_step2=args.die_step2
                     )
                     afd_search = AfdSearch(config)
                     afd_search.deployment()
@@ -94,7 +119,12 @@ def run_search(args):
                     next_n=args.next_n,
                     multi_token_ratio=args.multi_token_ratio,
                     attn_tensor_parallel=args.attn_tensor_parallel,
-                    ffn_tensor_parallel=args.ffn_tensor_parallel
+                    ffn_tensor_parallel=args.ffn_tensor_parallel,
+                    deployment_mode=args.deployment_mode,
+                    device_type2=args.device_type2,
+                    min_die2=args.min_die2,
+                    max_die2=args.max_die2,
+                    die_step2=args.die_step2
                 )
                 deepep_search = DeepEpSearch(config)
                 deepep_search.deployment()
@@ -115,9 +145,13 @@ def main():
         "python", "src/visualization/throughput.py",
         "--model_type", args.model_type,
         "--device_type", args.device_type,
+        "--deployment_mode", args.deployment_mode,
         "--min_die", str(args.min_die),
         "--max_die", str(args.max_die),
     ]
+    # Add heterogeneous parameters if applicable
+    if args.deployment_mode == "Heterogeneous" and args.device_type2:
+        throughput_cmd.extend(["--device_type2", args.device_type2])
     throughput_cmd.extend(["--micro_batch_num", "2", "3"])
     throughput_cmd.extend(["--tpot_list"] + [str(t) for t in args.tpot])
     throughput_cmd.extend(["--kv_len_list"] + [str(k) for k in args.kv_len])
@@ -126,11 +160,19 @@ def main():
 
     for tpot in args.tpot:
         for kv_len in args.kv_len:
-            file_name = f"{DeviceType(args.device_type).name}-{ModelType(args.model_type).name}-tpot{tpot}-kv_len{kv_len}.csv"
+            # Construct file name based on deployment mode
+            if args.deployment_mode == "Heterogeneous" and args.device_type2:
+                device_type2_enum = DeviceType(args.device_type2)
+                file_name = f"{DeviceType(args.device_type).name}_{device_type2_enum.name}-{ModelType(args.model_type).name}-tpot{tpot}-kv_len{kv_len}.csv"
+            else:
+                file_name = f"{DeviceType(args.device_type).name}-{ModelType(args.model_type).name}-tpot{tpot}-kv_len{kv_len}.csv"
             pipeline_cmd = [
                 "python", "src/visualization/pipeline.py",
-                "--file_name", file_name
+                "--file_name", file_name,
+                "--deployment_mode", args.deployment_mode,
             ]
+            if args.deployment_mode == "Heterogeneous" and args.device_type2:
+                pipeline_cmd.extend(["--device_type2", args.device_type2])
             subprocess.run(pipeline_cmd)
 
 

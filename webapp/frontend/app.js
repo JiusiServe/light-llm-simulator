@@ -7,7 +7,9 @@ const STORAGE_KEY_HISTORY = "llm-sim-run-history";
 const STORAGE_KEY_CSV_SELECTION = "llm-sim-csv-selection";
 const DEFAULT_CSV_SELECTION = {
   servingMode: "AFD",
-  deviceType: "ASCEND910B2",
+  deploymentMode: "Heterogeneous",
+  deviceType: "ASCENDDAVID120",
+  deviceType2: "ASCEND910B2",
   modelType: "DEEPSEEK_V3",
   tpot: 50,
   kvLen: 4096,
