@@ -2,7 +2,7 @@ import logging
 import math
 import os
 import pandas as pd
-from conf.common import MIN_ROUTED_EXPERT_PER_DIE, US_2_MS, SEC_2_US, BYTE_2_GB, MEMORY_THRESHOLD_RATIO, MS_2_SEC, MS_2_US
+from conf.common import US_2_MS, SEC_2_US, BYTE_2_GB, MEMORY_THRESHOLD_RATIO, MS_2_SEC, MS_2_US
 from src.search.base import BaseSearch
 from src.model.register import get_model, get_attention_family
 from conf.config import Config
@@ -49,9 +49,10 @@ class DeepEpSearch(BaseSearch):
         results = {}
 
         for total_die in range(min_die, max_die + 1, die_step):
-            routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.config.model_config.n_routed_experts / total_die)
+            routed_expert_per_die = Config.calc_routed_expert_per_die(
+                self.config.model_config.n_routed_experts,
+                self.config.model_config.n_shared_experts,
+                total_die
             )
             attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
 
@@ -116,7 +117,14 @@ class DeepEpSearch(BaseSearch):
                     mlp_static_memory + ffn_dynamic_memory + ffn_static_memory
                 )
                 e2e_time_per_moe_layer = attn_time + moe_time + commu_time
-                e2e_time = e2e_time_per_moe_layer * self.config.model_config.num_moe_layers
+                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
+                embedding = model["embedding"]
+                embedding()
+                embedding_time = embedding.e2e_time * SEC_2_US
+                lm_head = model["lm_head"]
+                lm_head()
+                lm_head_time = lm_head.e2e_time * SEC_2_US
+                e2e_time = e2e_time + embedding_time + lm_head_time
 
                 if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
                     mlp = model["mlp"]
@@ -231,9 +239,10 @@ class DeepEpSearch(BaseSearch):
         '''
         min_total_die, max_total_die, die_step = self.config.min_die, self.config.max_die, self.config.die_step
         for total_die in range(min_total_die, max_total_die + 1, die_step):
-            routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.config.model_config.n_routed_experts / total_die)
+            routed_expert_per_die = Config.calc_routed_expert_per_die(
+                self.config.model_config.n_routed_experts,
+                self.config.model_config.n_shared_experts,
+                total_die
             )
             attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
 
@@ -279,7 +288,14 @@ class DeepEpSearch(BaseSearch):
                     mlp_static_memory + ffn_dynamic_memory + ffn_static_memory
                 )
                 e2e_time_per_moe_layer = attn_time + moe_time + commu_time
-                e2e_time = e2e_time_per_moe_layer * self.config.model_config.num_moe_layers
+                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
+                embedding = model["embedding"]
+                embedding()
+                embedding_time = embedding.e2e_time * SEC_2_US
+                lm_head = model["lm_head"]
+                lm_head()
+                lm_head_time = lm_head.e2e_time * SEC_2_US
+                e2e_time = e2e_time + embedding_time + lm_head_time
 
                 if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
                     mlp = model["mlp"]

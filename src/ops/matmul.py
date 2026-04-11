@@ -1,10 +1,11 @@
 from src.ops.base import BaseOp
+from conf.common import US_2_SEC
 
 
-class OpGeMatmul(BaseOp):
+class OpMatmul(BaseOp):
     '''
     Description:
-        The general matrix multiplication operation.
+        The matrix multiplication operation.
         It is used to multiply two matrices of shape (m, n) and (n, k).
     Attributes:
         name: The name of the operation.
@@ -13,31 +14,54 @@ class OpGeMatmul(BaseOp):
         k: The number of columns of the second matrix.
         aichip_config: The hardware configuration.
     '''
-    def __init__(self, name, m, n, k, aichip_config, elem_size=2):
+    def __init__(self, name, m, n, k, aichip_config):
         self.m = m
         self.n = n
         self.k = k
-        super().__init__(name, aichip_config, elem_size)
-
-    def op_compute_disc(self):
-        if self.m < 64:
-            return 0.18
-        elif self.m >= 64 and self.m < 160:
-            return 0.24
-        elif self.m >= 160 and self.m < 224:
-            return 0.27
-        elif self.m >= 224 and self.m < 320:
-            return 0.37
-        return 0.43
+        self.elem_size = 4
+        self.memory_ratio = 0.5
+        super().__init__(name, aichip_config, self.elem_size)
 
     def compute_cost(self):
-        self.compute_flops = 2 * self.m * self.n * self.k
-        self.compute_time = self.compute_flops / self.cube_flops
+        self.total_computation = 2 * self.m * self.n * self.k
+        self.compute_time = self.total_computation / self.cube_flops_fp16 / 0.8
         return self.compute_time
 
     def memory_cost(self):
-        self.bytes = self.elem_size * self.n * self.k + self.elem_size * self.m * self.n
-        self.memory_time = self.bytes / self.local_memory_bandwidth
+        # input type: float, output type: float
+        self.total_data_movement = self.elem_size * (self.m * self.n + self.n * self.k + self.m * self.k)
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth / self.memory_ratio
+        return self.memory_time
+
+
+class OpBatchMatmul(BaseOp):
+    '''
+    Description:
+        The batch matrix multiplication operation.
+        It is used to multiply two matrices of shape (m, n) and (n, k).
+    Attributes:
+        name: The name of the operation.
+        m: The number of rows of the first matrix.
+        n: The number of columns of the first matrix.
+        k: The number of columns of the second matrix.
+        aichip_config: The hardware configuration.
+    '''
+    def __init__(self, name, m, n, k, aichip_config):
+        self.m = m
+        self.n = n
+        self.k = k
+        self.elem_size = 2
+        super().__init__(name, aichip_config, self.elem_size)
+
+    def compute_cost(self):
+        self.total_computation = 2 * self.m * self.n * self.k
+        self.compute_time = self.total_computation / self.cube_flops_fp16 / 0.8
+        return self.compute_time
+
+    def memory_cost(self):
+        # input type: bf16, output type: bf16
+        self.total_data_movement = 2 * (self.m * self.n + self.n * self.k + self.m * self.k)
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth
         return self.memory_time
 
 
@@ -53,27 +77,60 @@ class OpQuantBatchMatmul(BaseOp):
         k: The number of columns of the second matrix.
         aichip_config: The hardware configuration.
     '''
-    def __init__(self, name, m, n, k, aichip_config, elem_size=1):
+    def __init__(self, name, m, n, k, aichip_config):
         self.m = m
         self.n = n
         self.k = k
-        super().__init__(name, aichip_config, elem_size)
-
-    def op_compute_disc(self):
-        if self.m < 128:
-            return 0.35
-        elif self.m >= 128 and self.m < 160:
-            return 0.45
-        elif self.m >= 160:
-            return 0.5
+        self.elem_size = 1
+        super().__init__(name, aichip_config, self.elem_size)
 
     def compute_cost(self):
-        self.compute_flops = 2 * self.m * self.n * self.k
-        self.compute_time = self.compute_flops / self.cube_flops_int8
+        self.total_computation = 2 * self.m * self.n * self.k
+        self.compute_time = self.total_computation / self.cube_flops_int8 / 0.8
         return self.compute_time
 
     def memory_cost(self):
-        self.bytes = self.elem_size * self.n * self.k + self.elem_size * self.m * self.n
+        # input type: int8, output type: bf16
+        self.total_data_movement = self.m * self.n + self.n * self.k + 2 * self.m * self.k
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth
+        return self.memory_time
+
+
+class OpTransposeBatchMatmul(BaseOp):
+    '''
+    Description:
+        Perform the matrix multiplication of tensor x1 and tensor x2.
+        Tensors support transpose operation.
+        tensor x1, x2 must be three-dimensional tensors.
+        tensor x1: [B, M, N]
+        tensor x2: [B, N, K]
+        tensor output: [M, B, K]
+    Attributes:
+        name: The name of the operation.
+        m: The number of rows of the first matrix.
+        n: The number of columns of the first matrix.
+        k: The number of columns of the second matrix.
+        aichip_config: The hardware configuration.
+    '''
+    def __init__(self, name, b, m, n, k, aichip_config):
+        self.b = b
+        self.m = m
+        self.n = n
+        self.k = k
+        self.static_cost = 5 * US_2_SEC
+        self.elem_size = 2
+        super().__init__(name, aichip_config, self.elem_size, self.static_cost)
+
+    def compute_cost(self):
+        self.compute_flops = 2 * self.m * self.n * self.k
+        self.compute_time = self.compute_flops / self.cube_flops
+        return self.compute_time
+
+    def memory_cost(self):
+        # input tensor x1: [B, M, N], bf16
+        # input tensor x2: [B, N, K], bf16
+        # output tensor output: [M, B, K], bf16
+        self.bytes = (self.b * self.m * self.n + self.b * self.n * self.k + self.m * self.b * self.k) * self.elem_size
         self.memory_time = self.bytes / self.local_memory_bandwidth
         return self.memory_time
 

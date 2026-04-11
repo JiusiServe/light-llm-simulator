@@ -1,10 +1,9 @@
 from typing import Tuple
 import pandas as pd
 import logging
-import math
 import os
 from conf.config import Config
-from conf.common import SEC_2_US, MIN_ROUTED_EXPERT_PER_DIE, MEMORY_THRESHOLD_RATIO, MS_2_US, BYTE_2_GB
+from conf.common import SEC_2_US, MEMORY_THRESHOLD_RATIO, MS_2_US, BYTE_2_GB
 from src.search.base import BaseSearch
 from src.model.register import get_model, get_attention_family
 
@@ -139,9 +138,10 @@ class AfdSearch(BaseSearch):
             attn_die_step = self.config.die_step
 
         for ffn_die in range(min_ffn_die, max_ffn_die, ffn_die_step):
-            routed_expert_per_die = self.config.model_config.n_shared_experts + max(
-                MIN_ROUTED_EXPERT_PER_DIE,
-                math.ceil(self.config.model_config.n_routed_experts / ffn_die)
+            routed_expert_per_die = Config.calc_routed_expert_per_die(
+                self.config.model_config.n_routed_experts,
+                self.config.model_config.n_shared_experts,
+                ffn_die
             )
             ffn_static_memory = per_router_expert_memory * routed_expert_per_die
             self.config.routed_expert_per_die = routed_expert_per_die
@@ -185,15 +185,24 @@ class AfdSearch(BaseSearch):
                 dispatch_time = moe.dispatch_time * SEC_2_US
                 combine_time = moe.combine_time * SEC_2_US
                 commu_time = moe.commu_time * SEC_2_US
+
                 e2e_time_per_moe_layer = max(
                     attn_time + moe_time + commu_time,
-                    max(attn_time, moe_time) * self.config.micro_batch_num
+                    max(attn_time, max(moe_time, commu_time)) * self.config.micro_batch_num
                 )
 
-                e2e_time = (
-                    e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace +
-                    e2e_time_per_moe_layer * self.config.model_config.num_moe_layers
-                )
+                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
+                embedding = model["embedding"]
+                embedding()
+                embedding_time = embedding.e2e_time * SEC_2_US
+                lm_head = model["lm_head"]
+                lm_head()
+                lm_head_time = lm_head.e2e_time * SEC_2_US
+                e2e_time = e2e_time + embedding_time + lm_head_time
+
+                if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
+                    e2e_time = e2e_time + e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
+
                 throughput = (
                     attn_bs * self.config.micro_batch_num * attn_die / total_die / e2e_time *
                     (1 + self.config.multi_token_ratio) * SEC_2_US
@@ -207,7 +216,8 @@ class AfdSearch(BaseSearch):
                     f"ffn_die: {ffn_die}, total_die: {total_die}, "
                     f"attn_time: {attn_time:.2f}us, moe_time: {moe_time:.2f}us, "
                     f"dispatch_time: {dispatch_time:.2f}us, combine_time: {combine_time:.2f}us, "
-                    f"commu_time: {commu_time:.2f}us, e2e_time: {e2e_time:.2f}ms, "
+                    f"commu_time: {commu_time:.2f}us, "
+                    f"e2e_time: {e2e_time:.2f}ms, "
                     f"e2e_time_per_dense_layer: {e2e_time_per_dense_layer:.2f}us, "
                     f"e2e_time_per_moe_layer: {e2e_time_per_moe_layer:.2f}us, throughput: {throughput:.2f} tokens/die/s, "
                     f"kv_size:{kv_size} GB, attn_static_memory:{attn_static_memory} GB, "

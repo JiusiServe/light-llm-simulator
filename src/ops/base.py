@@ -1,6 +1,6 @@
 from abc import ABC
 from conf.hardware_config import HWConf
-from conf.common import SEC_2_US
+from conf.common import SEC_2_US, US_2_SEC
 import logging
 
 class BaseOp(ABC):
@@ -25,16 +25,21 @@ class BaseOp(ABC):
         compute_time: The operator's compute time, seconds.
         memory_time: The operator's memory time, seconds.
         e2e_time: The operator's end-to-end time(max of compute and memory time), seconds.
+        total_computation: The total computation of the operator.
+        total_data_movement: The total data movement of the operator.
+        arithmetic_intensity: The arithmetic intensity of the operator.
     """
     def __init__(
         self,
         name: str,
         aichip_config: HWConf,
-        elem_size: int
+        elem_size: int,
+        static_cost: float = 10 * US_2_SEC
     ) -> None:
         self.name = name
         self.aichip_config = aichip_config
         self.elem_size = elem_size
+        self.static_cost = static_cost
         self.cube_flops_int8 = self.aichip_config.cube_flops_int8 * self.op_compute_disc()
         self.cube_flops_fp16 = self.aichip_config.cube_flops_fp16 * self.op_compute_disc()
         self.vec_flops_int8 = self.aichip_config.vector_flops_int8 * self.op_compute_disc()
@@ -47,12 +52,15 @@ class BaseOp(ABC):
         self.compute_time: float = 0.0
         self.memory_time: float = 0.0
         self.e2e_time: float = 0.0
-
+        self.total_computation: float = 1
+        self.total_data_movement: float = 1
+        self.arithmetic_intensity: float = 1
 
     def __call__(self) -> float:
         self.compute_cost()
         self.memory_cost()
         self.e2e_cost()
+        self.get_arithmetic_intensity()
         return self.e2e_time
 
     def op_compute_disc(self) -> float:
@@ -77,7 +85,7 @@ class BaseOp(ABC):
             The memory bandwidth utilization.
             Usually, the memory bandwidth utilization is around 0.85.
         """
-        return 0.85
+        return 0.7
 
     def compute_cost(self) -> float:
         """
@@ -105,7 +113,7 @@ class BaseOp(ABC):
         Returns:
             The end-to-end time of the operator.
         """
-        self.e2e_time = max(self.memory_time, self.compute_time)
+        self.e2e_time = max(self.memory_time, self.compute_time) + self.static_cost
         logging.info(
             f"name: {self.name}, "
             f"compute_time: {self.compute_time * SEC_2_US:.2f} us, "
@@ -113,3 +121,13 @@ class BaseOp(ABC):
             f"e2e_time: {self.e2e_time * SEC_2_US:.2f} us"
         )
         return self.e2e_time
+
+    def get_arithmetic_intensity(self) -> float:
+        """
+        Description:
+            Calculate the arithmetic intensity of the operator.
+        Returns:
+            The arithmetic intensity of the operator.
+        """
+        self.arithmetic_intensity = round(self.total_computation / self.total_data_movement, 2)
+        return self.arithmetic_intensity

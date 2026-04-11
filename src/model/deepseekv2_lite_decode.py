@@ -5,14 +5,72 @@ from src.model.base import BaseModule
 from src.ops import (
     OpMlaProlog,
     MLAFlashAttentionInt8,
-    OpGeMatmul,
+    OpTransposeBatchMatmul,
+    OpBatchMatmul,
     OpQuantBatchMatmul,
     OpSwiglu,
     OpGroupedMatmul,
     Dispatch,
     Combine,
-    OpNorm
+    OpAddRmsNorm,
+    OpDynamicQuant
 )
+
+
+class DeepSeekV2LiteDecodeEmbedding(BaseModule):
+    """
+    Description:
+        The embedding module of the DeepSeekV3-671B model.
+        It is composed of a embedding and a embedding dropout.
+        It can calculate the end-to-end time, compute time and memory time of the embedding.
+    Attributes:
+        attn_bs: The batch size of the embedding.
+        aichip_config: The AI chip configuration.
+    """
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.attn_bs = config.attn_bs
+        self.aichip_config = config.aichip_config
+        self._build_ops()
+
+    def _build_ops(self):
+        self.embedding = OpBatchMatmul(
+            "embedding",
+            self.attn_bs * self.config.seq_len,
+            self.model_config.vocab_size,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.dropout = OpAddRmsNorm(
+            "embedding_dropout",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.ops = [
+            self.embedding,
+            self.dropout
+        ]
+
+    def _aggregate_times(self):
+        self.e2e_time = (
+            self.embedding.e2e_time +
+            self.dropout.e2e_time
+        )
+        self.compute_time = (
+            self.embedding.compute_time +
+            self.dropout.compute_time
+        )
+        self.memory_time = (
+            self.embedding.memory_time +
+            self.dropout.memory_time
+        )
+        logging.info(
+            f"Embedding Module - embedding: {self.embedding.e2e_time * 1e6:.2f}us, "
+            f"dropout: {self.dropout.e2e_time * 1e6:.2f}us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f}us"
+        )
 
 
 class DeepSeekV2LiteDecodeAttn(BaseModule):
@@ -23,11 +81,14 @@ class DeepSeekV2LiteDecodeAttn(BaseModule):
         It uses Multi-Latent Attention (MLA) to calculate the attention.
         It can calculate the end-to-end time, compute time and memory time of the attention.
     Attributes:
+        input_norm: The input layernorm operator.
         attn_bs: The batch size of the attention.
         mla_prolog: The MLA preprocessing to get the query, key and value.
         page_attention: The page attention operator.
         bmm_uv_absorb: The Value matrix absorption operator.
+        dynamic_quant: The dynamic quant operator.
         bmm_o_proj: The output projection operator.
+        post_attention_norm: The post attention layernorm operator.
     """
     def __init__(self, config: Config):
         super().__init__(config)
@@ -36,15 +97,31 @@ class DeepSeekV2LiteDecodeAttn(BaseModule):
         self._build_ops()
 
     def _build_ops(self):
+        # input layernorm
+        self.input_norm = OpAddRmsNorm(
+            "inputlayernorm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
         # mla prolog
         self.mla_prolog = OpMlaProlog(self.config)
         # page attention
         self.page_attention = MLAFlashAttentionInt8(self.config)
         # matrix absorption
-        self.bmm_uv_absorb = OpGeMatmul(
+        self.bmm_uv_absorb = OpTransposeBatchMatmul(
             "bmm_uv_absorb",
+            self.model_config.num_attention_heads,
             self.attn_bs * self.config.seq_len,
             self.model_config.kv_lora_rank,
+            self.model_config.v_head_dim,
+            self.aichip_config
+        )
+        # dynamic quant
+        self.dynamic_quant = OpDynamicQuant(
+            "attn_dynamic_quant",
+            self.attn_bs * self.config.seq_len,
             self.model_config.num_attention_heads * self.model_config.v_head_dim,
             self.aichip_config
         )
@@ -56,46 +133,62 @@ class DeepSeekV2LiteDecodeAttn(BaseModule):
             self.model_config.hidden_size,
             self.aichip_config
         )
-        # compute norm
-        self.norm = OpNorm(self.attn_bs, self.aichip_config)
+        # post attention layernorm
+        self.post_attention_norm = OpAddRmsNorm(
+            "post attention layernorm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
 
         self.ops = [
+            self.input_norm,
             self.mla_prolog,
             self.page_attention,
             self.bmm_uv_absorb,
+            self.dynamic_quant,
             self.bmm_o_proj,
-            self.norm
+            self.post_attention_norm
         ]
 
     def _aggregate_times(self):
         self.e2e_time = (
+            self.input_norm.e2e_time +
             self.mla_prolog.e2e_time +
             self.page_attention.e2e_time +
             self.bmm_uv_absorb.e2e_time +
+            self.dynamic_quant.e2e_time +
             self.bmm_o_proj.e2e_time +
-            self.norm.e2e_time
+            self.post_attention_norm.e2e_time
         )
         self.compute_time = (
+            self.input_norm.compute_time +
             self.mla_prolog.compute_time +
             self.page_attention.compute_time +
             self.bmm_uv_absorb.compute_time +
+            self.dynamic_quant.compute_time +
             self.bmm_o_proj.compute_time +
-            self.norm.compute_time
+            self.post_attention_norm.compute_time
         )
         self.memory_time = (
+            self.input_norm.memory_time +
             self.mla_prolog.memory_time +
             self.page_attention.memory_time +
             self.bmm_uv_absorb.memory_time +
+            self.dynamic_quant.memory_time +
             self.bmm_o_proj.memory_time + 
-            self.norm.memory_time
+            self.post_attention_norm.memory_time
         )
         logging.info(
             f"Attention Module - attn_bs: {self.config.attn_bs}, "
+            f"input_norm: {self.input_norm.e2e_time * 1e6:.2f}us, "
             f"mla_prolog: {self.mla_prolog.e2e_time * 1e6:.2f}us, "
             f"page_attention: {self.page_attention.e2e_time * 1e6:.2f}us, "
             f"bmm_uv_absorb: {self.bmm_uv_absorb.e2e_time * 1e6:.2f}us, "
+            f"dynamic_quant: {self.dynamic_quant.e2e_time * 1e6:.2f}us, "
             f"bmm_o_proj: {self.bmm_o_proj.e2e_time * 1e6:.2f}us, "
-            f"norm: {self.norm.e2e_time * 1e6:.2f}us"
+            f"post_attention_norm: {self.post_attention_norm.e2e_time * 1e6:.2f}us"
         )
 
 
@@ -219,23 +312,23 @@ class DeepSeekV2LiteDecodeMoe(BaseModule):
         ]
 
     def _aggregate_times(self):
-        self.dispatch_time = self.dispatch.e2e_time
+        self.dispatch_time = self.dispatch.e2e_time * MAX_AVG_RATIO
         self.e2e_time = (
-            self.moe_up.e2e_time * MAX_AVG_RATIO +
+            self.moe_up.e2e_time +
             self.moe_swiglu.e2e_time +
-            self.moe_down.e2e_time * MAX_AVG_RATIO
-        )
+            self.moe_down.e2e_time
+        ) * MAX_AVG_RATIO
         self.compute_time = (
-            self.moe_up.compute_time * MAX_AVG_RATIO +
+            self.moe_up.compute_time +
             self.moe_swiglu.compute_time +
-            self.moe_down.compute_time * MAX_AVG_RATIO
-        )
+            self.moe_down.compute_time
+        ) * MAX_AVG_RATIO
         self.memory_time = (
-            self.moe_up.memory_time * MAX_AVG_RATIO +
+            self.moe_up.memory_time +
             self.moe_swiglu.memory_time +
-            self.moe_down.memory_time * MAX_AVG_RATIO
-        )
-        self.combine_time = self.combine.e2e_time
+            self.moe_down.memory_time
+        ) * MAX_AVG_RATIO
+        self.combine_time = self.combine.e2e_time * MAX_AVG_RATIO
         self.commu_time = self.dispatch_time + self.combine_time
 
         logging.info(
@@ -246,4 +339,60 @@ class DeepSeekV2LiteDecodeMoe(BaseModule):
             f"dispatch_time: {self.dispatch_time * 1e6:.2f}us, "
             f"combine_time: {self.combine_time * 1e6:.2f}us, "
             f"commu_time: {self.commu_time * 1e6:.2f}us"
+        )
+
+
+class DeepSeekV2LiteDecodeLMHead(BaseModule):
+    """
+    Description:
+        The LMHead module of the DeepSeekV3-671B model.
+        It is composed of a norm and a LMHead projection.
+        It can calculate the end-to-end time, compute time and memory time of the LMHead.
+    Attributes:
+        attn_bs: The batch size of the LMHead.
+        aichip_config: The AI chip configuration.
+    """
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.attn_bs = config.attn_bs
+        self.aichip_config = config.aichip_config
+        self._build_ops()
+
+    def _build_ops(self):
+        self.norm = OpAddRmsNorm(
+            "norm",
+            self.attn_bs,
+            self.config.seq_len,
+            self.model_config.hidden_size,
+            self.aichip_config
+        )
+        self.lm_head_linear = OpBatchMatmul(
+            "lm_head_linear",
+            self.attn_bs * self.config.seq_len,
+            self.model_config.hidden_size,
+            self.model_config.vocab_size,
+            self.aichip_config
+        )
+        self.ops = [
+            self.norm,
+            self.lm_head_linear
+        ]
+
+    def _aggregate_times(self):
+        self.e2e_time = (
+            self.norm.e2e_time +
+            self.lm_head_linear.e2e_time
+        )
+        self.compute_time = (
+            self.norm.compute_time +
+            self.lm_head_linear.compute_time
+        )
+        self.memory_time = (
+            self.norm.memory_time +
+            self.lm_head_linear.memory_time
+        )
+        logging.info(
+            f"Embedding Module - norm: {self.norm.e2e_time * 1e6:.2f}us, "
+            f"lm_head_linear: {self.lm_head_linear.e2e_time * 1e6:.2f}us, "
+            f"e2e_time: {self.e2e_time * 1e6:.2f}us"
         )
