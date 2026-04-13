@@ -7,10 +7,7 @@ DeepEP is a deployment strategy that uses traditional expert parallelism for MoE
 DeepEP distributes experts across available hardware resources using standard expert parallelism. The search algorithm finds optimal configurations by:
 
 1. Explore total die counts from 16 to 769 (step 16)
-2. Calculate Routed Experts Per Die
-    ```
-    routed_expert_per_die = max(2, ceil(n_routed_experts / total_die))
-    ```
+2. Calculate Routed Experts Per Die (via `Config.calc_routed_expert_per_die`)
 3. Binary search to find the maximum `attn_bs` that satisfies latency and memory targets
 
 ## Usage

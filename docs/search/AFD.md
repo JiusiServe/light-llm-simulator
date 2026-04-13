@@ -25,7 +25,7 @@ AFD supports two deployment modes:
 - Total die = attn_die + ffn_die
 - Allows mixing different accelerator types for optimal cost-performance
 
-See [Heterogeneous AFD Design](../plans/heterogeneous-afd-design.md) for detailed documentation.
+See [Heterogeneous AFD Design](../plans/heterogeneous-design.md) for detailed documentation.
 
 ## Output Columns
 
@@ -37,13 +37,19 @@ The search outputs the following columns:
 - `attn_die`: Number of attention dies
 - `ffn_die`: Number of FFN dies
 - `total_die`: Number of total dies
-- `attn_time`: Attention time for per layer (μs)
-- `ffn_time`: FFN time for per layer (μs)
-- `commu_time`: communication time per layer(μs)
-- `e2e_time`: End-to-end time (ms)
-- `e2e_time_per_dense_layer`: End-to-end time for per dense layers (μs)
-- `e2e_time_per_moe_layer`: End-to-end time for per MoE layers (μs)
-- `throughput`: Throughput (tokens/second)
+- `attn_time(us)`: Attention time for per layer (μs)
+- `moe_time(us)`: MoE time for per layer (μs)
+- `dispatch_time(us)`: Dispatch time for per layer (μs)
+- `combine_time(us)`: Combine time for per layer (μs)
+- `commu_time(us)`: Communication time per layer (μs)
+- `e2e_time(ms)`: End-to-end time (ms)
+- `e2e_time_per_dense_layer(us)`: End-to-end time for per dense layers (μs)
+- `e2e_time_per_moe_layer(us)`: End-to-end time for per MoE layers (μs)
+- `throughput(tokens/die/s)`: Throughput (tokens/die/second)
+- `kv_size(GB)`: KV cache size (GB)
+- `attn_static_memory(GB)`: Attention static memory (GB)
+- `mlp_static_memory(GB)`: MLP static memory (GB)
+- `ffn_static_memory(GB)`: FFN static memory (GB)
 - `deployment_mode`: Deployment mode ("Homogeneous" or "Heterogeneous")
 - `device_type_attn`: Device type for attention module
 - `device_type_ffn`: Device type for FFN module

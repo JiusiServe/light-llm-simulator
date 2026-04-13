@@ -85,6 +85,22 @@ self.aichip_config_attn = self.aichip_config   # device_type
 self.aichip_config_ffn = self.aichip_config2   # device_type2 (or same as attn in Homogeneous)
 ```
 
+New static method:
+
+```python
+@staticmethod
+def calc_routed_expert_per_die(n_routed_experts, n_shared_experts, ffn_die) -> int:
+    """Calculate routed_expert_per_die based on FFN die count."""
+    if ffn_die < 64:
+        return n_shared_experts + ceil(n_routed_experts / ffn_die)
+    elif ffn_die < 128:
+        return n_shared_experts + ceil(n_routed_experts / ffn_die) + 1
+    else:
+        return ceil(n_routed_experts / ffn_die) + 1
+```
+
+This method is shared across `Config.__init__`, `AfdSearch`, and `DeepEpSearch` to avoid duplication.
+
 #### 2.2.2 Base Module (`src/model/base.py`)
 
 Updated constructor to select hardware config based on module type:
@@ -144,11 +160,13 @@ Key changes:
        if total_die % aichip_config.num_dies_per_node != 0: continue
    ```
 
-4. **Output file naming**: Include both device types
+4. **Output file naming**: Include both device types, save to `heterogeneous/` subdirectory
    ```python
    if deployment_mode == "Heterogeneous":
-       file_name = f"{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}-heterogeneous.csv"
+       result_dir = f"data/afd/mbn{micro_batch_num}/heterogeneous/"
+       file_name = f"{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}.csv"
    else:
+       result_dir = f"data/afd/mbn{micro_batch_num}/homogeneous/"
        file_name = f"{device_type}-{model}-tpot{tpot}-kv_len{kv_len}.csv"
    ```
 
@@ -190,7 +208,7 @@ Added support for heterogeneous CSV files:
    parser.add_argument('--device_type2', type=str, default=None)
    ```
 
-2. **Heterogeneous file naming**: Uses `{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}-heterogeneous.csv`
+2. **Heterogeneous file naming**: Files saved in `heterogeneous/` subdirectory as `{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}.csv` (no `-heterogeneous` suffix)
 
 3. **Output path**: `data/images/throughput/heterogeneous/{device_type1}_{device_type2}-{model}-...`
 
@@ -223,10 +241,11 @@ Added support for heterogeneous pipeline Gantt charts:
 
 2. **_sanitize_args**: Passes heterogeneous parameters to CLI
 
-3. **fetch_csv_results**: Supports heterogeneous file naming
+3. **fetch_csv_results**: Supports heterogeneous file naming via subdirectory
    ```python
    if deployment_mode == "Heterogeneous" and device_type2:
-       file_name = f"{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}-heterogeneous.csv"
+       dir_name = repo_root / "data" / "afd" / f"mbn{micro_batch_num}" / "best" / "heterogeneous"
+       file_name = f"{device_type}_{device_type2}-{model_type}-tpot{tpot}-kv_len{kv_len}.csv"
    ```
 
 ##### Frontend Components
@@ -392,7 +411,7 @@ config = Config(
 
 deepep_search = DeepEpSearch(config)
 deepep_search.deployment()
-# Output: data/deepep/ASCENDA3_Pod_ASCENDDAVID121-DEEPSEEK_V3-tpot50-kv_len4096-heterogeneous.csv
+# Output: data/deepep/heterogeneous/ASCENDA3_Pod_ASCENDDAVID121-DEEPSEEK_V3-tpot50-kv_len4096.csv
 ```
 
 ## 4. Output Format
@@ -408,8 +427,8 @@ New columns added:
 | `device_type_ffn` | Device type for FFN |
 
 File naming:
-- Homogeneous: `{device_type}-{model}-tpot{tpot}-kv_len{kv_len}.csv`
-- Heterogeneous: `{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}-heterogeneous.csv`
+- Homogeneous: `data/afd/mbn{mbn}/homogeneous/{device_type}-{model}-tpot{tpot}-kv_len{kv_len}.csv`
+- Heterogeneous: `data/afd/mbn{mbn}/heterogeneous/{device_type1}_{device_type2}-{model}-tpot{tpot}-kv_len{kv_len}.csv`
 
 ### 4.2 DeepEP CSV
 
@@ -505,7 +524,7 @@ config = Config(
 afd_search = AfdSearch(config)
 afd_search.deployment()
 "
-# Output: data/afd/mbn2/ASCENDA3_Pod_ASCENDDAVID121-DEEPSEEK_V3-tpot50-kv_len4096-heterogeneous.csv
+# Output: data/afd/mbn2/heterogeneous/ASCENDA3_Pod_ASCENDDAVID121-DEEPSEEK_V3-tpot50-kv_len4096.csv
 ```
 
 ## 7. Limitations and Future Work
@@ -513,8 +532,7 @@ afd_search.deployment()
 ### 7.1 Current Limitations
 
 1. DeepEP heterogeneous mode runs homogeneous DeepEP separately (not truly heterogeneous)
-2. Communication costs between different device types use the attention device's bandwidth
-3. No support for more than 2 device types
+2. Communication costs between different device types use the **minimum** intra_node_bandwidth of the two devices
 
 ### 7.2 Future Enhancements
 
