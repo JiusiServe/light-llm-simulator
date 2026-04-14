@@ -2,7 +2,7 @@ import pandas as pd
 import logging
 import os
 from conf.config import Config
-from conf.common import SEC_2_US, MEMORY_THRESHOLD_RATIO, MS_2_US, BYTE_2_GB
+from conf.common import SEC_2_US, MEMORY_THRESHOLD_RATIO, BYTE_2_GB, US_2_MS, MS_2_SEC
 from src.search.base import BaseSearch
 from src.model.register import get_model, get_attention_family
 
@@ -59,11 +59,11 @@ class AfdSearch(BaseSearch):
         ffn_static_memory = per_router_expert_memory * routed_expert_per_die
 
         # Memory constraints
-        attn_memory = kv_size * self.config.micro_batch_num + attn_static_memory
+        attn_used_memory = kv_size * self.config.micro_batch_num + attn_static_memory
         attn_memory_threshold = self.config.aichip_config_attn.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO
-        ffn_memory_threshold = self.config.aichip_config_ffn.aichip_memory * MEMORY_THRESHOLD_RATIO
+        ffn_memory_threshold = self.config.aichip_config_ffn.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO
 
-        if attn_memory > attn_memory_threshold or ffn_static_memory > ffn_memory_threshold:
+        if attn_used_memory > attn_memory_threshold or ffn_static_memory > ffn_memory_threshold:
             return None
 
         # Compute MoE layer timing
@@ -109,6 +109,8 @@ class AfdSearch(BaseSearch):
         else:
             e2e_time_per_dense_layer = 0.0
 
+        e2e_time = e2e_time / (1 + self.config.multi_token_ratio) * US_2_MS
+
         if e2e_time > e2e_latency_target:
             return None
 
@@ -117,6 +119,10 @@ class AfdSearch(BaseSearch):
         e2a_recv = moe.e2a_recv.e2e_time * SEC_2_US
         dispatch_time = moe.dispatch_time * SEC_2_US
         combine_time = moe.combine_time * SEC_2_US
+
+        ffn_used_memory = ffn_static_memory
+        attn_available_memory = attn_memory_threshold - attn_used_memory
+        ffn_available_memory = ffn_memory_threshold - ffn_used_memory
 
         return {
             'ffn_bs': self.config.ffn_bs,
@@ -135,6 +141,10 @@ class AfdSearch(BaseSearch):
             'attn_static_memory': attn_static_memory,
             'mlp_static_memory': mlp_static_memory,
             'ffn_static_memory': ffn_static_memory,
+            'attn_used_memory': attn_used_memory,
+            'ffn_used_memory': ffn_used_memory,
+            'attn_available_memory': attn_available_memory,
+            'ffn_available_memory': ffn_available_memory,
         }
 
     def search(self):
@@ -145,7 +155,6 @@ class AfdSearch(BaseSearch):
             For each (ffn_die, attn_die) pair, binary search for the max attn_bs
             that satisfies latency and memory constraints.
         '''
-        e2e_latency_target = self.config.tpot * MS_2_US * (1 + self.config.multi_token_ratio)
 
         # Get die ranges based on deployment mode
         if self.config.deployment_mode == "Heterogeneous":
@@ -196,7 +205,7 @@ class AfdSearch(BaseSearch):
                 while attn_bs_max - attn_bs_min > 1:
                     attn_bs = (attn_bs_min + attn_bs_max) // 2
                     result = self._evaluate_config(
-                        attn_bs, attn_die, ffn_die, routed_expert_per_die, e2e_latency_target
+                        attn_bs, attn_die, ffn_die, routed_expert_per_die, self.config.tpot
                     )
                     if result is not None:
                         attn_bs_min = attn_bs
@@ -208,14 +217,13 @@ class AfdSearch(BaseSearch):
 
                 # Recompute final results with the optimal attn_bs
                 result = self._evaluate_config(
-                    attn_bs, attn_die, ffn_die, routed_expert_per_die, e2e_latency_target
+                    attn_bs, attn_die, ffn_die, routed_expert_per_die, self.config.tpot
                 )
                 if result is None:
                     continue
 
                 throughput = (
-                    attn_bs * self.config.micro_batch_num * attn_die / total_die / result['e2e_time'] *
-                    (1 + self.config.multi_token_ratio) * SEC_2_US
+                    attn_bs * self.config.micro_batch_num * attn_die / total_die / result['e2e_time'] / MS_2_SEC
                 )
 
                 logging.info(f"-------AFD Search Result:-------")
@@ -227,19 +235,23 @@ class AfdSearch(BaseSearch):
                     f"attn_time: {result['attn_time']:.2f}us, moe_time: {result['moe_time']:.2f}us, "
                     f"a2e_send: {result['a2e_send']:.2f}us, a2e_recv: {result['a2e_recv']:.2f}us, "
                     f"dispatch_time: {result['dispatch_time']:.2f}us, combine_time: {result['combine_time']:.2f}us, "
-                    f"e2a_recv: {result['e2a_recv']:.2f}us, commu_time: {result['commu_time']:.2f}us, e2e_time: {result['e2e_time'] / MS_2_US:.2f}ms, "
+                    f"e2a_recv: {result['e2a_recv']:.2f}us, commu_time: {result['commu_time']:.2f}us, e2e_time: {result['e2e_time']:.2f}ms, "
                     f"e2e_time_per_dense_layer: {result['e2e_time_per_dense_layer']:.2f}us, "
                     f"e2e_time_per_moe_layer: {result['e2e_time_per_moe_layer']:.2f}us, throughput: {throughput:.2f} tokens/die/s, "
-                    f"kv_size:{result['kv_size']} GB, attn_static_memory:{result['attn_static_memory']} GB, "
-                    f"mlp_static_memory:{result['mlp_static_memory']} GB, ffn_static_memory:{result['ffn_static_memory']} GB"
+                    f"kv_size: {result['kv_size']} GB, attn_static_memory: {result['attn_static_memory']} GB, "
+                    f"mlp_static_memory: {result['mlp_static_memory']} GB, ffn_static_memory: {result['ffn_static_memory']} GB, "
+                    f"attn_used_memory: {result['attn_used_memory']} GB, ffn_used_memory: {result['ffn_used_memory']} GB, "
+                    f"attn_available_memory: {result['attn_available_memory']} GB, ffn_available_memory: {result['ffn_available_memory']} GB"
                 )
 
                 self.perf_afd_results.append([
                     attn_bs, result['ffn_bs'], self.config.kv_len, attn_die, ffn_die, total_die,
                     result['attn_time'], result['moe_time'], result['a2e_send'], result['a2e_recv'],
                     result['dispatch_time'], result['combine_time'], result['e2a_recv'], result['commu_time'],
-                    result['e2e_time'] / MS_2_US, result['e2e_time_per_dense_layer'], result['e2e_time_per_moe_layer'], throughput,
+                    result['e2e_time'], result['e2e_time_per_dense_layer'], result['e2e_time_per_moe_layer'], throughput,
                     result['kv_size'], result['attn_static_memory'], result['mlp_static_memory'], result['ffn_static_memory'],
+                    result['attn_used_memory'], result['ffn_used_memory'],
+                    result['attn_available_memory'], result['ffn_available_memory'],
                     self.config.deployment_mode, self.config.device_type.name, self.config.device_type2.name
                 ])
 
@@ -248,6 +260,7 @@ class AfdSearch(BaseSearch):
             'attn_time(us)', 'moe_time(us)', 'a2e_send(us)', 'a2e_recv(us)', 'dispatch_time(us)', 'combine_time(us)', 'e2a_recv(us)', 'commu_time(us)',
             'e2e_time(ms)', 'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
+            'attn_used_memory(GB)', 'ffn_used_memory(GB)', 'attn_available_memory(GB)', 'ffn_available_memory(GB)',
             'deployment_mode', 'device_type_attn', 'device_type_ffn'
         ]
         df = pd.DataFrame(self.perf_afd_results, columns=columns)

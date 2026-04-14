@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import pandas as pd
 from conf.common import US_2_MS, SEC_2_US, BYTE_2_GB, MEMORY_THRESHOLD_RATIO, MS_2_SEC, MS_2_US
@@ -30,6 +29,82 @@ class DeepEpSearch(BaseSearch):
         super().__init__(config)
         self.perf_deepep_results = []
 
+    def _evaluate_config(self, attn_bs, temp_config, routed_expert_per_die):
+        """Evaluate a single (attn_bs) configuration.
+
+        Runs the model and computes timing, memory, and e2e_time.
+
+        Returns:
+            dict with all result fields, or None if constraints are violated.
+        """
+        if get_attention_family(self.config.model_type) == "MLA":
+            kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_MLA_memory_size(
+                self.config.model_config, attn_bs
+            )
+        elif get_attention_family(self.config.model_type) == "GQA":
+            kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_GQA_memory_size(
+                self.config.model_config, attn_bs
+            )
+        ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok
+        temp_config.attn_bs = attn_bs
+        temp_config.ffn_bs = ffn_bs
+
+        model = get_model(temp_config)
+        attn = model["attn"]
+        attn()
+        moe = model["moe"]
+        moe()
+        attn_time = attn.e2e_time * SEC_2_US
+        moe_time = moe.e2e_time * SEC_2_US
+        commu_time = moe.commu_time * SEC_2_US
+        dispatch_time = moe.dispatch_time * SEC_2_US
+        combine_time = moe.combine_time * SEC_2_US
+
+        ffn_dynamic_memory = (
+            ffn_bs * self.config.model_config.hidden_size *
+            self.config.model_config.num_layers * BYTE_2_GB
+        )
+        ffn_static_memory = per_router_expert_memory * routed_expert_per_die
+        used_memory = (
+            kv_size * self.config.micro_batch_num + attn_static_memory +
+            mlp_static_memory + ffn_dynamic_memory + ffn_static_memory
+        )
+        e2e_time_per_moe_layer = attn_time + moe_time + commu_time
+        e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
+        embedding = model["embedding"]
+        embedding()
+        lm_head = model["lm_head"]
+        lm_head()
+        e2e_time = e2e_time + embedding.e2e_time * SEC_2_US + lm_head.e2e_time * SEC_2_US
+
+        if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
+            mlp = model["mlp"]
+            mlp()
+            mlp_time = mlp.e2e_time * SEC_2_US
+            e2e_time_per_dense_layer = attn_time + mlp_time
+            e2e_time = e2e_time + e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
+        else:
+            e2e_time_per_dense_layer = 0.0
+
+        e2e_time = e2e_time / (1 + self.config.multi_token_ratio) * US_2_MS
+
+        return {
+            'ffn_bs': ffn_bs,
+            'attn_time': attn_time,
+            'moe_time': moe_time,
+            'dispatch_time': dispatch_time,
+            'combine_time': combine_time,
+            'commu_time': commu_time,
+            'e2e_time': e2e_time,
+            'e2e_time_per_dense_layer': e2e_time_per_dense_layer,
+            'e2e_time_per_moe_layer': e2e_time_per_moe_layer,
+            'kv_size': kv_size,
+            'attn_static_memory': attn_static_memory,
+            'mlp_static_memory': mlp_static_memory,
+            'ffn_static_memory': ffn_static_memory,
+            'used_memory': used_memory,
+        }
+
     def _run_homogeneous_deepep(self, device_type_str: str, min_die: int, max_die: int, die_step: int) -> dict:
         '''
         Run homogeneous DeepEP on a single device type.
@@ -56,112 +131,47 @@ class DeepEpSearch(BaseSearch):
             )
             attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
 
+            # Create a temporary config with the device type
+            temp_config = Config(
+                serving_mode="DeepEP",
+                model_type=self.config.model_type.value,
+                device_type=device_type_str,
+                min_attn_bs=self.config.min_attn_bs,
+                max_attn_bs=self.config.max_attn_bs,
+                min_die=min_die,
+                max_die=max_die,
+                die_step=die_step,
+                tpot=self.config.tpot,
+                kv_len=self.config.kv_len,
+                micro_batch_num=1,
+                next_n=self.config.seq_len - 1,
+                multi_token_ratio=self.config.multi_token_ratio,
+                attn_tensor_parallel=self.config.attn_tensor_parallel,
+                ffn_tensor_parallel=self.config.ffn_tensor_parallel,
+                deployment_mode="Homogeneous"
+            )
+            temp_config.attn_die = total_die
+            temp_config.ffn_die = total_die
+            temp_config.routed_expert_per_die = routed_expert_per_die
+
             # search max attention bs
             while attn_bs_max - attn_bs_min > 1:
                 attn_bs = (attn_bs_min + attn_bs_max) // 2
-                if get_attention_family(self.config.model_type) == "MLA":
-                    kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_MLA_memory_size(
-                        self.config.model_config, attn_bs
-                    )
-                elif get_attention_family(self.config.model_type) == "GQA":
-                    kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_GQA_memory_size(
-                        self.config.model_config, attn_bs
-                    )
-                latency_constraint = (
-                    self.config.tpot * MS_2_US / self.config.micro_batch_num * (1 + self.config.multi_token_ratio)
-                )
-                attn_die, ffn_die = total_die, total_die
-                ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok
+                r = self._evaluate_config(attn_bs, temp_config, routed_expert_per_die)
 
-                # Create a temporary config with the device type
-                temp_config = Config(
-                    serving_mode="DeepEP",
-                    model_type=self.config.model_type.value,
-                    device_type=device_type_str,
-                    min_attn_bs=self.config.min_attn_bs,
-                    max_attn_bs=self.config.max_attn_bs,
-                    min_die=min_die,
-                    max_die=max_die,
-                    die_step=die_step,
-                    tpot=self.config.tpot,
-                    kv_len=self.config.kv_len,
-                    micro_batch_num=1,
-                    next_n=self.config.seq_len - 1,
-                    multi_token_ratio=self.config.multi_token_ratio,
-                    attn_tensor_parallel=self.config.attn_tensor_parallel,
-                    ffn_tensor_parallel=self.config.ffn_tensor_parallel,
-                    deployment_mode="Homogeneous"
-                )
-                temp_config.attn_bs = attn_bs
-                temp_config.ffn_bs = ffn_bs
-                temp_config.attn_die = attn_die
-                temp_config.ffn_die = ffn_die
-                temp_config.routed_expert_per_die = routed_expert_per_die
-
-                model = get_model(temp_config)
-                attn = model["attn"]
-                attn()
-                moe = model["moe"]
-                moe()
-                attn_time = attn.e2e_time * SEC_2_US
-                moe_time = moe.e2e_time * SEC_2_US
-                commu_time = moe.commu_time * SEC_2_US
-                dispatch_time = moe.dispatch_time * SEC_2_US
-                combine_time = moe.combine_time * SEC_2_US
-
-                ffn_dynamic_memory = (
-                    ffn_bs * self.config.model_config.hidden_size *
-                    self.config.model_config.num_layers * BYTE_2_GB
-                )
-                ffn_static_memory = per_router_expert_memory * routed_expert_per_die
-                total_memory = (
-                    kv_size * self.config.micro_batch_num + attn_static_memory +
-                    mlp_static_memory + ffn_dynamic_memory + ffn_static_memory
-                )
-                e2e_time_per_moe_layer = attn_time + moe_time + commu_time
-                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
-                embedding = model["embedding"]
-                embedding()
-                embedding_time = embedding.e2e_time * SEC_2_US
-                lm_head = model["lm_head"]
-                lm_head()
-                lm_head_time = lm_head.e2e_time * SEC_2_US
-                e2e_time = e2e_time + embedding_time + lm_head_time
-
-                if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
-                    mlp = model["mlp"]
-                    mlp()
-                    mlp_time = mlp.e2e_time * SEC_2_US
-                    e2e_time_per_dense_layer = attn_time + mlp_time
-                    e2e_time = e2e_time + e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
-                else:
-                    e2e_time_per_dense_layer = 0.0
-
-                if (e2e_time > latency_constraint or
-                    total_memory > aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
+                if (r['e2e_time'] > self.config.tpot or
+                    r['used_memory'] > aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
                     attn_bs_max = attn_bs
                 else:
                     attn_bs_min = attn_bs
 
-            e2e_time = e2e_time * US_2_MS
-            throughput = attn_bs / e2e_time / MS_2_SEC * (1 + self.config.multi_token_ratio)
-            results[total_die] = {
-                'attn_bs': attn_bs,
-                'ffn_bs': ffn_bs,
-                'throughput': throughput,
-                'e2e_time': e2e_time,
-                'attn_time': attn_time,
-                'moe_time': moe_time,
-                'dispatch_time': dispatch_time,
-                'combine_time': combine_time,
-                'commu_time': commu_time,
-                'kv_size': kv_size,
-                'attn_static_memory': attn_static_memory,
-                'mlp_static_memory': mlp_static_memory,
-                'ffn_static_memory': ffn_static_memory,
-                'e2e_time_per_dense_layer': e2e_time_per_dense_layer,
-                'e2e_time_per_moe_layer': e2e_time_per_moe_layer
-            }
+            # Final evaluation with optimal attn_bs_min
+            r = self._evaluate_config(attn_bs_min, temp_config, routed_expert_per_die)
+            r['attn_bs'] = attn_bs_min
+            r['throughput'] = attn_bs_min / r['e2e_time'] / MS_2_SEC
+            r['available_memory'] = aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO - r['used_memory']
+
+            results[total_die] = r
 
         return results
 
@@ -218,6 +228,7 @@ class DeepEpSearch(BaseSearch):
                     r1['e2e_time_per_dense_layer'], r1['e2e_time_per_moe_layer'],
                     r1['throughput'], r2['throughput'], weighted_throughput,
                     r1['kv_size'], r1['attn_static_memory'], r1['mlp_static_memory'], r1['ffn_static_memory'],
+                    r1['used_memory'], r1['available_memory'],
                     "Heterogeneous", self.config.device_type.name, self.config.device_type2.name
                 ])
 
@@ -227,6 +238,7 @@ class DeepEpSearch(BaseSearch):
             'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)',
             'throughput_device1(tokens/die/s)', 'throughput_device2(tokens/die/s)', 'weighted_throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
+            'used_memory(GB)', 'available_memory(GB)',
             'deployment_mode', 'device_type1', 'device_type2'
         ]
         df = pd.DataFrame(self.perf_deepep_results, columns=columns)
@@ -241,101 +253,20 @@ class DeepEpSearch(BaseSearch):
         Description:
             Search the optimal attention batch size for the model used DeepEP serving.
         '''
-        min_total_die, max_total_die, die_step = self.config.min_die, self.config.max_die, self.config.die_step
-        for total_die in range(min_total_die, max_total_die + 1, die_step):
-            routed_expert_per_die = Config.calc_routed_expert_per_die(
-                self.config.model_config.n_routed_experts,
-                self.config.model_config.n_shared_experts,
-                total_die
-            )
-            attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
+        results = self._run_homogeneous_deepep(
+            self.config.device_type.value,
+            self.config.min_die,
+            self.config.max_die,
+            self.config.die_step
+        )
 
-            # search max attention bs
-            while attn_bs_max - attn_bs_min > 1:
-                attn_bs = (attn_bs_min + attn_bs_max) // 2
-                if get_attention_family(self.config.model_type) == "MLA":
-                    kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_MLA_memory_size(
-                        self.config.model_config, attn_bs
-                    )
-                elif get_attention_family(self.config.model_type) == "GQA":
-                    kv_size, attn_static_memory, mlp_static_memory, per_router_expert_memory = self.compute_GQA_memory_size(
-                        self.config.model_config, attn_bs
-                    )
-                latency_constraint = (
-                    self.config.tpot * MS_2_US / self.config.micro_batch_num * (1 + self.config.multi_token_ratio)
-                )
-                attn_die, ffn_die = total_die, total_die
-                ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok
-                self.config.attn_bs = attn_bs
-                self.config.ffn_bs = ffn_bs
-                self.config.attn_die = attn_die
-                self.config.ffn_die = ffn_die
-                self.config.routed_expert_per_die = routed_expert_per_die
-                model = get_model(self.config)
-                attn = model["attn"]
-                attn()
-                moe = model["moe"]
-                moe()
-                attn_time = attn.e2e_time * SEC_2_US
-                moe_time = moe.e2e_time * SEC_2_US
-                commu_time = moe.commu_time * SEC_2_US
-                dispatch_time = moe.dispatch_time * SEC_2_US
-                combine_time = moe.combine_time * SEC_2_US
-
-                ffn_dynamic_memory = (
-                    ffn_bs * self.config.model_config.hidden_size *
-                    self.config.model_config.num_layers * BYTE_2_GB
-                )
-                ffn_static_memory = per_router_expert_memory * routed_expert_per_die
-                total_memory = (
-                    kv_size * self.config.micro_batch_num + attn_static_memory +
-                    mlp_static_memory + ffn_dynamic_memory + ffn_static_memory
-                )
-                e2e_time_per_moe_layer = attn_time + moe_time + commu_time
-                e2e_time = e2e_time_per_moe_layer * (self.config.model_config.num_moe_layers + self.config.seq_len - 1)
-                embedding = model["embedding"]
-                embedding()
-                embedding_time = embedding.e2e_time * SEC_2_US
-                lm_head = model["lm_head"]
-                lm_head()
-                lm_head_time = lm_head.e2e_time * SEC_2_US
-                e2e_time = e2e_time + embedding_time + lm_head_time
-
-                if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
-                    mlp = model["mlp"]
-                    mlp()
-                    mlp_time = mlp.e2e_time * SEC_2_US
-                    e2e_time_per_dense_layer = attn_time + mlp_time
-                    e2e_time = e2e_time + e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
-                else:
-                    mlp_time = 0.0
-                    e2e_time_per_dense_layer = 0.0
-                if (e2e_time > latency_constraint or
-                    total_memory > self.config.aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
-                    attn_bs_max = attn_bs
-                else:
-                    attn_bs_min = attn_bs
-
-            e2e_time = e2e_time * US_2_MS
-            throughput = attn_bs / e2e_time / MS_2_SEC * (1 + self.config.multi_token_ratio)
-
-            logging.info(f"-------DeepEP Search Result:-------")
-            logging.info(
-                f"attn_bs:{attn_bs}, ffn_bs:{ffn_bs}, "
-                f"kv_len:{self.config.kv_len}, total_die:{total_die}, "
-                f"attn_time:{attn_time} us, moe_time:{moe_time} us, "
-                f"commu_time:{commu_time} us, dispatch_time:{dispatch_time} us, combine_time:{combine_time} us, "
-                f"e2e_time:{e2e_time} ms, throughput:{throughput} tokens/die/s, "
-                f"e2e_time_per_dense_layer:{e2e_time_per_dense_layer} us, e2e_time_per_moe_layer:{e2e_time_per_moe_layer} us, "
-                f"kv_size:{kv_size} GB, attn_static_memory:{attn_static_memory} GB, "
-                f"mlp_static_memory:{mlp_static_memory} GB, ffn_static_memory:{ffn_static_memory} GB"
-            )
-
+        for total_die, r in results.items():
             self.perf_deepep_results.append([
-                attn_bs, ffn_bs, self.config.kv_len, total_die,
-                attn_time, moe_time, dispatch_time, combine_time, commu_time, e2e_time,
-                e2e_time_per_dense_layer, e2e_time_per_moe_layer, throughput,
-                kv_size, attn_static_memory, mlp_static_memory, ffn_static_memory,
+                r['attn_bs'], r['ffn_bs'], self.config.kv_len, total_die,
+                r['attn_time'], r['moe_time'], r['dispatch_time'], r['combine_time'], r['commu_time'], r['e2e_time'],
+                r['e2e_time_per_dense_layer'], r['e2e_time_per_moe_layer'], r['throughput'],
+                r['kv_size'], r['attn_static_memory'], r['mlp_static_memory'], r['ffn_static_memory'],
+                r['used_memory'], r['available_memory'],
                 "Homogeneous", self.config.device_type.name, self.config.device_type.name
             ])
 
@@ -344,6 +275,7 @@ class DeepEpSearch(BaseSearch):
             'attn_time(us)', 'moe_time(us)', 'dispatch_time(us)', 'combine_time(us)', 'commu_time(us)', 'e2e_time(ms)',
             'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
+            'used_memory(GB)', 'available_memory(GB)',
             'deployment_mode', 'device_type1', 'device_type2'
         ]
         df = pd.DataFrame(self.perf_deepep_results, columns=columns)
