@@ -129,5 +129,8 @@ class BaseOp(ABC):
         Returns:
             The arithmetic intensity of the operator.
         """
-        self.arithmetic_intensity = round(self.total_computation / self.total_data_movement, 2)
+        if self.total_data_movement > 0:
+            self.arithmetic_intensity = round(self.total_computation / self.total_data_movement, 2)
+        else:
+            self.arithmetic_intensity = 0.0
         return self.arithmetic_intensity

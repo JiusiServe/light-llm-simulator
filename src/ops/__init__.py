@@ -4,6 +4,7 @@ from src.ops.page_attention import MLAFlashAttentionFP16, MLAFlashAttentionInt8,
 from src.ops.swiglu import OpSwiglu
 from src.ops.mla_prolog import OpMlaProlog
 from src.ops.communication import Dispatch, Combine
+from src.ops.p2p import OpA2ESend, OpA2ERecv, OpE2ARecv
 from src.ops.rotary import OpRotary
 from src.ops.norm import OpAddRmsNorm
 from src.ops.dynamicquant import OpDynamicQuant
@@ -23,6 +24,9 @@ __all__ = [
     "OpMlaProlog",
     "Dispatch",
     "Combine",
+    "OpA2ESend",
+    "OpA2ERecv",
+    "OpE2ARecv",
     "OpRotary",
     "OpAddRmsNorm",
     "OpDynamicQuant",

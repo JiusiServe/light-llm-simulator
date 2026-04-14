@@ -106,6 +106,8 @@ class DeepEpSearch(BaseSearch):
                 attn_time = attn.e2e_time * SEC_2_US
                 moe_time = moe.e2e_time * SEC_2_US
                 commu_time = moe.commu_time * SEC_2_US
+                dispatch_time = moe.dispatch_time * SEC_2_US
+                combine_time = moe.combine_time * SEC_2_US
 
                 ffn_dynamic_memory = (
                     ffn_bs * self.config.model_config.hidden_size *
@@ -150,6 +152,8 @@ class DeepEpSearch(BaseSearch):
                 'e2e_time': e2e_time,
                 'attn_time': attn_time,
                 'moe_time': moe_time,
+                'dispatch_time': dispatch_time,
+                'combine_time': combine_time,
                 'commu_time': commu_time,
                 'kv_size': kv_size,
                 'attn_static_memory': attn_static_memory,
@@ -210,7 +214,7 @@ class DeepEpSearch(BaseSearch):
 
                 self.perf_deepep_results.append([
                     r1['attn_bs'], r1['ffn_bs'], self.config.kv_len, die1, die2, total_die,
-                    r1['attn_time'], r1['moe_time'], r1['commu_time'], r1['e2e_time'],
+                    r1['attn_time'], r1['moe_time'], r1['dispatch_time'], r1['combine_time'], r1['commu_time'], r1['e2e_time'],
                     r1['e2e_time_per_dense_layer'], r1['e2e_time_per_moe_layer'],
                     r1['throughput'], r2['throughput'], weighted_throughput,
                     r1['kv_size'], r1['attn_static_memory'], r1['mlp_static_memory'], r1['ffn_static_memory'],
@@ -219,7 +223,7 @@ class DeepEpSearch(BaseSearch):
 
         columns = [
             'attn_bs', 'ffn_bs', 'kv_len', 'device1_die', 'device2_die', 'total_die',
-            'attn_time(us)', 'moe_time(us)', 'commu_time(us)', 'e2e_time(ms)',
+            'attn_time(us)', 'moe_time(us)', 'dispatch_time(us)', 'combine_time(us)', 'commu_time(us)', 'e2e_time(ms)',
             'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)',
             'throughput_device1(tokens/die/s)', 'throughput_device2(tokens/die/s)', 'weighted_throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
@@ -230,7 +234,7 @@ class DeepEpSearch(BaseSearch):
         file_name = f"{self.config.device_type.name}_{self.config.device_type2.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
         os.makedirs(result_dir, exist_ok=True)
         result_path = result_dir + file_name
-        df.to_csv(result_path, index=False)
+        df.to_csv(result_path, index=False, float_format='%.2f')
 
     def search_bs(self):
         '''
@@ -347,7 +351,7 @@ class DeepEpSearch(BaseSearch):
         file_name = f"{self.config.device_type.name}-{self.config.model_type.name}-tpot{int(self.config.tpot)}-kv_len{self.config.kv_len}.csv"
         os.makedirs(result_dir, exist_ok=True)
         result_path = result_dir + file_name
-        df.to_csv(result_path, index=False)
+        df.to_csv(result_path, index=False, float_format='%.2f')
 
     def deployment(self):
         '''

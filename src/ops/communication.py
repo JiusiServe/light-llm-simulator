@@ -108,8 +108,8 @@ class Dispatch(BaseOp):
         return self.memory_time
 
     def e2e_cost(self):
-      self.e2e_time = self.memory_time + self.compute_time + self.static_cost
-      return self.e2e_time
+        self.e2e_time = self.memory_time + self.compute_time + self.static_cost
+        return self.e2e_time
 
 class Combine(BaseOp):
     '''

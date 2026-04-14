@@ -6,9 +6,11 @@ import os
 
 color_map = {
     'attn': '#1f77b4',
+    'attn+a2e': '#1f77b4',
     'dispatch': '#ff7f0e',
     'moe': '#2ca02c',
     'combine': '#d62728',
+    'combine+e2a-recv': '#d62728',
     'commu': '#9467bd'
 }
 
@@ -22,21 +24,21 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help='Second device type for Heterogeneous mode')
 
 
-def create_gantt_chart_afd(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, file_name, deployment_mode="Homogeneous"):
+def create_gantt_chart_afd(mbn, attn_time, a2e_time, dispatch_time, moe_time, combine_time, e2a_recv_time, total_die, file_name, deployment_mode="Homogeneous"):
     """Create Gantt chart for AFD serving mode (has dispatch/combine phases)."""
     start_time, attn_tmp, dispatch_tmp, ffn_tmp = 0.0, 0.0, 0.0, 0.0
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(12, 4))
     for micro_id in range(mbn):
-        attn_end = start_time + attn_time
+        attn_end = start_time + attn_time + a2e_time
         dispatch_end = max(attn_end, attn_tmp) + dispatch_time
         ffn_end = max(dispatch_end, dispatch_tmp) + moe_time
-        combine_end = max(ffn_end, ffn_tmp) + combine_time
+        combine_end = max(ffn_end, ffn_tmp) + combine_time + e2a_recv_time
 
         tasks = [
-            ("attn", start_time, attn_end),
+            ("attn+a2e", start_time, attn_end),
             ("dispatch", max(attn_end, attn_tmp), dispatch_end),
             ("moe", max(dispatch_end, dispatch_tmp), ffn_end),
-            ("combine", max(ffn_end, ffn_tmp), combine_end)
+            ("combine+e2a-recv", max(ffn_end, ffn_tmp), combine_end)
         ]
         attn_tmp, dispatch_tmp, ffn_tmp = dispatch_end, ffn_end, combine_end
         start_time = attn_end
@@ -69,19 +71,21 @@ def create_gantt_chart_afd(mbn, attn_time, dispatch_time, moe_time, combine_time
     print(f"Saved: {save_path}")
 
 
-def create_gantt_chart_deepep(attn_time, moe_time, commu_time, total_die, file_name, deployment_mode="Homogeneous"):
-    """Create Gantt chart for DeepEP serving mode (no dispatch/combine phases)."""
+def create_gantt_chart_deepep(attn_time, dispatch_time, moe_time, combine_time, total_die, file_name, deployment_mode="Homogeneous"):
+    """Create Gantt chart for DeepEP serving mode."""
     fig, ax = plt.subplots(figsize=(10, 4))
 
-    # DeepEP has simpler pipeline: attn -> moe (with communication overlap)
+    # DeepEP pipeline: attn -> dispatch -> moe -> combine
     attn_end = attn_time
-    moe_end = attn_end + moe_time
-    commu_end = moe_end + commu_time
+    dispatch_end = attn_end + dispatch_time
+    moe_end = dispatch_end + moe_time
+    combine_end = moe_end + combine_time
 
     tasks = [
         ("attn", 0, attn_end),
-        ("moe", attn_end, moe_end),
-        ("commu", moe_end, commu_end)
+        ("dispatch", attn_end, dispatch_end),
+        ("moe", dispatch_end, moe_end),
+        ("combine", moe_end, combine_end)
     ]
 
     for i, (label, start, end) in enumerate(tasks):
@@ -139,23 +143,10 @@ def main():
         df = pd.read_csv(mbn_path)
 
         if mbn == 1:
-            # DeepEP mode - uses attn, moe, commu columns
-            required_cols = ['attn_time(us)', 'moe_time(us)']
-            if not all(col in df.columns for col in required_cols):
-                print(f"Skipping mbn={mbn}: missing required columns for DeepEP")
-                continue
-            commu_col = 'commu_time(us)'
-            for index, row in df.iterrows():
-                attn_time = row['attn_time(us)']
-                moe_time = row['moe_time(us)']
-                commu_time = row[commu_col] if commu_col in row else 0
-                total_die = row['total_die']
-                create_gantt_chart_deepep(attn_time, moe_time, commu_time, total_die, args.file_name, args.deployment_mode)
-        else:
-            # AFD mode - uses attn, dispatch, moe, combine columns
+            # DeepEP mode - uses attn, dispatch, moe, combine columns
             required_cols = ['attn_time(us)', 'dispatch_time(us)', 'moe_time(us)', 'combine_time(us)']
             if not all(col in df.columns for col in required_cols):
-                print(f"Skipping mbn={mbn}: missing required columns for AFD")
+                print(f"Skipping mbn={mbn}: missing required columns for DeepEP")
                 continue
             for index, row in df.iterrows():
                 attn_time = row['attn_time(us)']
@@ -163,7 +154,25 @@ def main():
                 moe_time = row['moe_time(us)']
                 combine_time = row['combine_time(us)']
                 total_die = row['total_die']
-                create_gantt_chart_afd(mbn, attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name, args.deployment_mode)
+                create_gantt_chart_deepep(attn_time, dispatch_time, moe_time, combine_time, total_die, args.file_name, args.deployment_mode)
+        else:
+            # AFD mode - uses attn, a2e, dispatch, moe, combine, e2a_recv columns
+            required_cols = ['attn_time(us)', 'dispatch_time(us)', 'moe_time(us)', 'combine_time(us)']
+            if not all(col in df.columns for col in required_cols):
+                print(f"Skipping mbn={mbn}: missing required columns for AFD")
+                continue
+            a2e_col1 = 'a2e_send(us)'
+            a2e_col2 = 'a2e_recv(us)'
+            e2a_recv_col = 'e2a_recv(us)'
+            for index, row in df.iterrows():
+                attn_time = row['attn_time(us)']
+                a2e_time = (row['a2e_send(us)'] + row['a2e_recv(us)']) if (a2e_col1 in row and a2e_col2 in row) else 0
+                dispatch_time = row['dispatch_time(us)']
+                moe_time = row['moe_time(us)']
+                combine_time = row['combine_time(us)']
+                e2a_recv_time = row[e2a_recv_col] if e2a_recv_col in row else 0
+                total_die = row['total_die']
+                create_gantt_chart_afd(mbn, attn_time, a2e_time, dispatch_time, moe_time, combine_time, e2a_recv_time, total_die, args.file_name, args.deployment_mode)
 
 
 if __name__ == "__main__":

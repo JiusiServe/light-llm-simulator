@@ -49,11 +49,7 @@
 
       <label class="field">
         <span>Total Die</span>
-        <select v-model="params.totalDie">
-          <option v-for="die in dieOptions" :key="die" :value="die">
-            {{ die }}
-          </option>
-        </select>
+        <input type="number" v-model.number="params.totalDie" min="1" step="1" />
       </label>
 
       <label class="field">
@@ -151,8 +147,9 @@ const DEVICE_OPTIONS = [
   { value: 'ASCEND910B3', label: 'Ascend 910B3' },
   { value: 'ASCEND910B4', label: 'Ascend 910B4' },
   { value: 'ASCENDA3_Pod', label: 'Ascend A3Pod' },
-  { value: 'ASCENDDAVID121', label: 'Ascend David121' },
+  { value: 'ASCENDDAVID100', label: 'Ascend David100' },
   { value: 'ASCENDDAVID120', label: 'Ascend David120' },
+  { value: 'ASCENDDAVID121', label: 'Ascend David121' },
   { value: 'NvidiaA100SXM', label: 'Nvidia A100 SXM' },
   { value: 'NvidiaH100SXM', label: 'Nvidia H100 SXM' }
 ];
@@ -168,7 +165,6 @@ const DEPLOYMENT_MODES = [
   { value: 'Heterogeneous', label: 'Heterogeneous' }
 ];
 
-const DIE_OPTIONS = [64, 128, 256, 384, 512, 768];
 const TPOT_OPTIONS = [20, 50, 70, 100, 150];
 const KV_LEN_OPTIONS = [2048, 4096, 8192, 16384, 131072];
 
@@ -268,7 +264,6 @@ export default {
       deviceOptions: DEVICE_OPTIONS,
       modelOptions: MODEL_OPTIONS,
       deploymentModes: DEPLOYMENT_MODES,
-      dieOptions: DIE_OPTIONS,
       tpotOptions: TPOT_OPTIONS,
       kvLenOptions: KV_LEN_OPTIONS
     };

@@ -59,11 +59,11 @@ class BaseModule(ABC):
         for op in self.ops:
             op()
 
-    @abstractmethod
     def _aggregate_times(self):
         """
-        Description:
-            Aggregate the times of the operators for the module to obtain 
-            the module's memory time, compute time and end-to-end time.
+        Aggregate times by summing over all ops.
+        Override this method if you need custom aggregation logic.
         """
-        pass
+        self.e2e_time = sum(op.e2e_time for op in self.ops)
+        self.compute_time = sum(op.compute_time for op in self.ops)
+        self.memory_time = sum(op.memory_time for op in self.ops)
