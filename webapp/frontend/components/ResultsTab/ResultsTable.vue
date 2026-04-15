@@ -10,6 +10,23 @@
       </div>
 
       <template v-else>
+        <div class="column-selector">
+          <button class="btn btn-ghost toggle-col-btn" @click="showColumnPicker = !showColumnPicker">
+            Columns ({{ visibleColumns.length }}/{{ allColumns.length }})
+            <span class="chevron">{{ showColumnPicker ? '▲' : '▼' }}</span>
+          </button>
+          <div v-if="showColumnPicker" class="column-picker-dropdown">
+            <label class="column-pick-item">
+              <input type="checkbox" :checked="allColumnsSelected" @change="toggleAllColumns" />
+              <span class="column-pick-label"><strong>Select All</strong></span>
+            </label>
+            <label v-for="col in allColumns" :key="col" class="column-pick-item">
+              <input type="checkbox" :checked="selectedColumns.has(col)" @change="toggleColumn(col)" />
+              <span class="column-pick-label">{{ formatColumnName(col) }}</span>
+            </label>
+          </div>
+        </div>
+
         <div class="table-scroll">
           <table class="data-table">
             <thead>
@@ -17,7 +34,7 @@
                 <th class="select-col">
                   <input type="checkbox" :checked="allSelected" @change="toggleAll" />
                 </th>
-                <th v-for="col in columns" :key="col" @click="sortBy(col)">
+                <th v-for="col in visibleColumns" :key="col" @click="sortBy(col)">
                   <span>{{ formatColumnName(col) }}</span>
                   <span class="sort-indicator">{{ sortIndicator(col) }}</span>
                 </th>
@@ -32,7 +49,7 @@
                     @change="toggleSelect(row.__stableId)"
                   />
                 </td>
-                <td v-for="col in columns" :key="col">
+                <td v-for="col in visibleColumns" :key="col">
                   {{ formatValue(row[col]) }}
                 </td>
               </tr>
@@ -90,13 +107,42 @@ export default {
     const sortCol = ref('total_die');
     const sortDir = ref('desc');
     const selectedRows = reactive(new Set());
+    const showColumnPicker = ref(false);
+    const selectedColumns = reactive(new Set());
 
-    const columns = computed(() => {
+    const allColumns = computed(() => {
       if (!props.data.length) {
         return [];
       }
       return Object.keys(props.data[0]).filter((col) => col !== '__stableId');
     });
+
+    const visibleColumns = computed(() => {
+      if (selectedColumns.size === 0) {
+        return allColumns.value;
+      }
+      return allColumns.value.filter((col) => selectedColumns.has(col));
+    });
+
+    const allColumnsSelected = computed(() => {
+      return allColumns.value.length > 0 && selectedColumns.size === allColumns.value.length;
+    });
+
+    const toggleColumn = (col) => {
+      if (selectedColumns.has(col)) {
+        selectedColumns.delete(col);
+      } else {
+        selectedColumns.add(col);
+      }
+    };
+
+    const toggleAllColumns = () => {
+      if (allColumnsSelected.value) {
+        selectedColumns.clear();
+      } else {
+        allColumns.value.forEach((col) => selectedColumns.add(col));
+      }
+    };
 
     const dataWithStableIds = computed(() =>
       props.data.map((row, index) => ({
@@ -222,6 +268,8 @@ export default {
       () => {
         page.value = 1;
         selectedRows.clear();
+        selectedColumns.clear();
+        showColumnPicker.value = false;
       }
     );
 
@@ -254,7 +302,8 @@ export default {
 
     return {
       page,
-      columns,
+      allColumns,
+      visibleColumns,
       paginatedData,
       totalPages,
       selectedRows,
@@ -267,13 +316,73 @@ export default {
       emitCompare,
       formatColumnName,
       formatValue,
-      filteredData
+      filteredData,
+      showColumnPicker,
+      selectedColumns,
+      allColumnsSelected,
+      toggleColumn,
+      toggleAllColumns
     };
   }
 };
 </script>
 
 <style scoped>
+.column-selector {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.toggle-col-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chevron {
+  font-size: 10px;
+}
+
+.column-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  padding: 10px 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.column-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.column-pick-item:hover {
+  background: #f1f5f9;
+}
+
+.column-pick-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .results-table {
   border: 1px solid #d8e0ea;
   border-radius: 18px;

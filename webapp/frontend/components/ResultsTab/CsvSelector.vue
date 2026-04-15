@@ -58,20 +58,18 @@
 
       <label class="field">
         <span>TPOT</span>
-        <select v-model="selection.tpot">
-          <option v-for="tpot in tpotOptions" :key="tpot" :value="tpot">
-            {{ tpot }} ms
-          </option>
-        </select>
+        <input type="number" v-model.number="selection.tpot" list="tpot-list" min="1" />
+        <datalist id="tpot-list">
+          <option v-for="tpot in tpotSuggestions" :key="tpot" :value="tpot" />
+        </datalist>
       </label>
 
       <label class="field">
         <span>KV Length</span>
-        <select v-model="selection.kvLen">
-          <option v-for="kv in kvLenOptions" :key="kv" :value="kv">
-            {{ kv }}
-          </option>
-        </select>
+        <input type="number" v-model.number="selection.kvLen" list="kvlen-list" min="1" />
+        <datalist id="kvlen-list">
+          <option v-for="kv in kvLenSuggestions" :key="kv" :value="kv" />
+        </datalist>
       </label>
 
       <label class="field">
@@ -135,8 +133,8 @@ const DEVICE_OPTIONS = [
   { value: 'NvidiaH100SXM', label: 'Nvidia H100 SXM' }
 ];
 
-const TPOT_OPTIONS = [20, 50, 70, 100, 150];
-const KV_LEN_OPTIONS = [2048, 4096, 8192, 16384, 131072];
+const TPOT_SUGGESTIONS = [20, 50, 70, 100, 150];
+const KV_LEN_SUGGESTIONS = [2048, 4096, 8192, 16384, 131072];
 const MICRO_BATCH_OPTIONS = [2, 3];
 
 function createSelection() {
@@ -241,8 +239,8 @@ export default {
       deploymentModes: DEPLOYMENT_MODES,
       modelOptions: MODEL_OPTIONS,
       deviceOptions: DEVICE_OPTIONS,
-      tpotOptions: TPOT_OPTIONS,
-      kvLenOptions: KV_LEN_OPTIONS,
+      tpotSuggestions: TPOT_SUGGESTIONS,
+      kvLenSuggestions: KV_LEN_SUGGESTIONS,
       microBatchOptions: MICRO_BATCH_OPTIONS,
       handleLoadCsv
     };
