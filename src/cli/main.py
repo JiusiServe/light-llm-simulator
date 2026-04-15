@@ -152,10 +152,13 @@ def main():
     # Add heterogeneous parameters if applicable
     if args.deployment_mode == "Heterogeneous" and args.device_type2:
         throughput_cmd.extend(["--device_type2", args.device_type2])
+        total_dies = list(range(args.min_die + args.min_die2, args.max_die + args.max_die2 + 1, min(args.die_step, args.die_step2)))
+    else:
+        total_dies = list(range(args.min_die, args.max_die + 1, args.die_step))
     throughput_cmd.extend(["--micro_batch_num", "2", "3"])
     throughput_cmd.extend(["--tpot_list"] + [str(t) for t in args.tpot])
     throughput_cmd.extend(["--kv_len_list"] + [str(k) for k in args.kv_len])
-    throughput_cmd.extend(["--total_die"] + [str(t) for t in range(args.min_die, args.max_die + 1, args.die_step)])
+    throughput_cmd.extend(["--total_die"] + [str(t) for t in total_dies])
     subprocess.run(throughput_cmd)
 
     for tpot in args.tpot:

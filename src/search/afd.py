@@ -69,6 +69,7 @@ class AfdSearch(BaseSearch):
         # Compute MoE layer timing
         self.config.attn_bs = attn_bs
         self.config.ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok * attn_die / ffn_die
+        moe_ffn_bs = self.config.ffn_bs
         self.config.attn_die = attn_die
         self.config.ffn_die = ffn_die
         self.config.routed_expert_per_die = routed_expert_per_die
@@ -99,6 +100,7 @@ class AfdSearch(BaseSearch):
         if self.config.model_config.num_layers > self.config.model_config.num_moe_layers:
             self.config.attn_bs = attn_bs * self.config.micro_batch_num
             self.config.ffn_bs = self.config.attn_bs
+            dense_ffn_bs = self.config.ffn_bs
             model_dense = get_model(self.config)
             attn_dense = model_dense["attn"]
             mlp = model_dense["mlp"]
@@ -107,6 +109,7 @@ class AfdSearch(BaseSearch):
             e2e_time_per_dense_layer = attn_dense.e2e_time * SEC_2_US + mlp.e2e_time * SEC_2_US
             e2e_time = e2e_time + e2e_time_per_dense_layer * self.config.model_config.first_k_dense_replace
         else:
+            dense_ffn_bs = 0
             e2e_time_per_dense_layer = 0.0
 
         e2e_time = e2e_time / (1 + self.config.multi_token_ratio) * US_2_MS
@@ -125,7 +128,8 @@ class AfdSearch(BaseSearch):
         ffn_available_memory = ffn_memory_threshold - ffn_used_memory
 
         return {
-            'ffn_bs': self.config.ffn_bs,
+            'moe_ffn_bs': moe_ffn_bs,
+            'dense_ffn_bs': dense_ffn_bs,
             'attn_time': attn_time,
             'moe_time': moe_time,
             'dispatch_time': dispatch_time,
@@ -229,7 +233,7 @@ class AfdSearch(BaseSearch):
                 logging.info(f"-------AFD Search Result:-------")
                 logging.info(
                     f"deployment_mode: {self.config.deployment_mode}, "
-                    f"attn_bs: {attn_bs}, ffn_bs: {result['ffn_bs']}, "
+                    f"attn_bs: {attn_bs}, dense_ffn_bs: {result['dense_ffn_bs']}, moe_ffn_bs: {result['moe_ffn_bs']}, "
                     f"kv_len: {self.config.kv_len}, attn_die: {attn_die}, "
                     f"ffn_die: {ffn_die}, total_die: {total_die}, "
                     f"attn_time: {result['attn_time']:.2f}us, moe_time: {result['moe_time']:.2f}us, "
@@ -245,7 +249,7 @@ class AfdSearch(BaseSearch):
                 )
 
                 self.perf_afd_results.append([
-                    attn_bs, result['ffn_bs'], self.config.kv_len, attn_die, ffn_die, total_die,
+                    attn_bs, result['dense_ffn_bs'], result['moe_ffn_bs'], self.config.kv_len, attn_die, ffn_die, total_die,
                     result['attn_time'], result['moe_time'], result['a2e_send'], result['a2e_recv'],
                     result['dispatch_time'], result['combine_time'], result['e2a_recv'], result['commu_time'],
                     result['e2e_time'], result['e2e_time_per_dense_layer'], result['e2e_time_per_moe_layer'], throughput,
@@ -256,7 +260,8 @@ class AfdSearch(BaseSearch):
                 ])
 
         columns = [
-            'attn_bs', 'ffn_bs', 'kv_len', 'attn_die', 'ffn_die', 'total_die',
+            'attn_bs(per_micro_batch)', 'dense_ffn_bs', 'moe_ffn_bs(per_micro_batch)',
+            'kv_len', 'attn_die', 'ffn_die', 'total_die',
             'attn_time(us)', 'moe_time(us)', 'a2e_send(us)', 'a2e_recv(us)', 'dispatch_time(us)', 'combine_time(us)', 'e2a_recv(us)', 'commu_time(us)',
             'e2e_time(ms)', 'e2e_time_per_dense_layer(us)', 'e2e_time_per_moe_layer(us)', 'throughput(tokens/die/s)',
             'kv_size(GB)', 'attn_static_memory(GB)', 'mlp_static_memory(GB)', 'ffn_static_memory(GB)',
