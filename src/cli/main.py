@@ -150,18 +150,26 @@ def main():
         "--max_die", str(args.max_die),
     ]
     # Add heterogeneous parameters if applicable
-    if args.deployment_mode == "Heterogeneous" and args.device_type2:
+    if args.deployment_mode == "Heterogeneous":
+        if args.device_type2 is None:
+                raise ValueError("device_type2 is required for Heterogeneous deployment mode")
         throughput_cmd.extend(["--device_type2", args.device_type2])
+        _min_die2 = args.min_die2 if args.min_die2 is not None else args.min_die
+        _max_die2 = args.max_die2 if args.max_die2 is not None else args.max_die
+        _die_step2 = args.die_step2 if args.die_step2 is not None else args.die_step
+        total_dies = list(range(args.min_die + _min_die2, args.max_die + _max_die2 + 1, min(args.die_step, _die_step2)))
+    else:
+        total_dies = list(range(args.min_die, args.max_die + 1, args.die_step))
     throughput_cmd.extend(["--micro_batch_num", "2", "3"])
     throughput_cmd.extend(["--tpot_list"] + [str(t) for t in args.tpot])
     throughput_cmd.extend(["--kv_len_list"] + [str(k) for k in args.kv_len])
-    throughput_cmd.extend(["--total_die"] + [str(t) for t in range(args.min_die, args.max_die + 1, args.die_step)])
+    throughput_cmd.extend(["--total_die"] + [str(t) for t in total_dies])
     subprocess.run(throughput_cmd)
 
     for tpot in args.tpot:
         for kv_len in args.kv_len:
             # Construct file name based on deployment mode
-            if args.deployment_mode == "Heterogeneous" and args.device_type2:
+            if args.deployment_mode == "Heterogeneous":
                 device_type2_enum = DeviceType(args.device_type2)
                 file_name = f"{DeviceType(args.device_type).name}_{device_type2_enum.name}-{ModelType(args.model_type).name}-tpot{tpot}-kv_len{kv_len}.csv"
             else:
@@ -171,7 +179,7 @@ def main():
                 "--file_name", file_name,
                 "--deployment_mode", args.deployment_mode,
             ]
-            if args.deployment_mode == "Heterogeneous" and args.device_type2:
+            if args.deployment_mode == "Heterogeneous":
                 pipeline_cmd.extend(["--device_type2", args.device_type2])
             subprocess.run(pipeline_cmd)
 
