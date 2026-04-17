@@ -24,6 +24,7 @@ const LEGACY_DEFAULT_CSV_SELECTION = {
 
 const MODEL_VALUE_TO_NAME = {
   "deepseek-ai/DeepSeek-V3": "DEEPSEEK_V3",
+  "deepseek-ai/DeepSeek-V3-2": "DEEPSEEK_V3_2",
   "Qwen/Qwen3-235B-A22B": "QWEN3_235B",
   "deepseek-ai/DeepSeek-V2-Lite": "DEEPSEEK_V2_LITE",
 };

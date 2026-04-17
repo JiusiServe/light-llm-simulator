@@ -141,6 +141,7 @@
 <script>
 const MODEL_OPTIONS = [
   { value: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek V3' },
+  { value: 'deepseek-ai/DeepSeek-V3-2', label: 'DeepSeek V3.2' },
   { value: 'Qwen/Qwen3-235B-A22B', label: 'Qwen3-235B-A22B' },
   { value: 'deepseek-ai/DeepSeek-V2-Lite', label: 'DeepSeek V2 Lite' }
 ];

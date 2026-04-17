@@ -154,6 +154,7 @@ const DEVICE_OPTIONS = [
 
 const MODEL_OPTIONS = [
   { value: 'DEEPSEEK_V3', label: 'DeepSeek V3' },
+  { value: 'DEEPSEEK_V3_2', label: 'DeepSeek V3.2' },
   { value: 'QWEN3_235B', label: 'Qwen3-235B-A22B' },
   { value: 'DEEPSEEK_V2_LITE', label: 'DeepSeek V2 Lite' }
 ];

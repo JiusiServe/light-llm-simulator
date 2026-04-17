@@ -21,6 +21,13 @@ from src.model.deepseekv2_lite_decode import (
     DeepSeekV2LiteDecodeMoe,
     DeepSeekV2LiteDecodeLMHead
 )
+from src.model.deepseekv32_decode import (
+    DeepSeekV32DecodeEmbedding,
+    DeepSeekV32DecodeAttn,
+    DeepSeekV32DecodeMLP,
+    DeepSeekV32DecodeMoe,
+    DeepSeekV32DecodeLMHead
+)
 
 
 def get_model(
@@ -56,6 +63,13 @@ def get_model(
         moe = DeepSeekV2LiteDecodeMoe(config)
         lm_head = DeepSeekV2LiteDecodeLMHead(config)
         model = {"embedding": embedding, "attn": attn, "mlp": mlp, "moe": moe, "lm_head": lm_head}
+    if config.model_type == ModelType.DEEPSEEK_V3_2:
+        embedding = DeepSeekV32DecodeEmbedding(config)
+        attn = DeepSeekV32DecodeAttn(config)
+        mlp = DeepSeekV32DecodeMLP(config)
+        moe = DeepSeekV32DecodeMoe(config)
+        lm_head = DeepSeekV32DecodeLMHead(config)
+        model = {"embedding": embedding, "attn": attn, "mlp": mlp, "moe": moe, "lm_head": lm_head}
     return model
 
 def get_attention_family(
@@ -70,7 +84,7 @@ def get_attention_family(
         The attention mechanism of the specified model.
     '''
     assert(model_type in ModelType), f"unsupport model {model_type}"
-    if model_type == ModelType.DEEPSEEK_V3 or model_type == ModelType.DEEPSEEK_V2_LITE:
+    if model_type == ModelType.DEEPSEEK_V3 or model_type == ModelType.DEEPSEEK_V2_LITE or model_type == ModelType.DEEPSEEK_V3_2:
         return "MLA"
     if model_type == ModelType.QWEN3_235B:
         return "GQA"

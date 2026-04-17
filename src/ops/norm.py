@@ -1,7 +1,6 @@
-# aclnnAddRmsNorm
-
 from src.ops.base import BaseOp
 from conf.common import US_2_SEC
+
 
 class OpAddRmsNorm(BaseOp):
     '''
@@ -42,3 +41,8 @@ class OpAddRmsNorm(BaseOp):
         self.bytes = self.elem_size * (self.bs * self.seq_len * self.hidden_size * 3 + self.hidden_size)
         self.memory_time = self.bytes / self.local_memory_bandwidth
         return self.memory_time
+
+
+# TODO # LinearNorm 
+# class OpLinearNorm(BaseOp):
+    # def 

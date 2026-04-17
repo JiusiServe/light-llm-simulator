@@ -1,5 +1,5 @@
 from src.ops.base import BaseOp
-from conf.common import BLOCK_SIZE
+from conf.common import BLOCK_SIZE, SPARSE_COUNT
 from conf.common import US_2_SEC
 import math
 
@@ -135,6 +135,183 @@ class MLAFlashAttentionInt8(BaseOp):
 
         self.total_data_movement = q_nope_block + q_rope_block + kv_nope_block + kv_rope_block + o_block
         self.memory_time = self.total_data_movement / self.local_memory_bandwidth / self.memory_ratio
+        return self.memory_time
+
+
+class MLASparseFlashAttentionInt8(BaseOp):
+    '''
+    Description:
+        Sparse Flash Attention for MLA models in INT8 precision.
+        Uses sparse block selection (top-K) to attend only to selected KV blocks,
+        reducing both compute and memory compared to full attention.
+
+        Based on CANN ops-transformer sparse_flash_attention operator:
+        - query: [B, S, N1, D+rope_head_dim] (nope + rope parts)
+        - key/value: stored in paged KV cache, accessed via sparse_indices + block_table
+        - sparse_indices: [B, q_blocks, N2, K] specifies which KV blocks to attend to
+        - Only selected KV blocks are loaded and computed, skipping irrelevant tokens
+
+    Attributes:
+        config: The configuration of the search task.
+        sparse_block_size: The sparse block size for block-sparse selection.
+        sparse_k: Number of selected KV blocks per query block (top-K).
+    '''
+    def __init__(self, config, sparse_block_size=128, sparse_k=16, elem_size=1):
+        self.model_config = config.model_config
+        self.attn_bs = config.attn_bs
+        self.kv_len = config.kv_len
+        self.seq_len = config.seq_len
+        self.sparse_block_size = sparse_block_size
+        self.sparse_k = sparse_k
+        self.static_cost = 30 * US_2_SEC
+        super().__init__("MLASparseFlashAttentionInt8", config.aichip_config, elem_size, static_cost=self.static_cost)
+        self.memory_ratio = 0.8
+
+    def compute_cost(self):
+        # Effective KV length: only selected sparse blocks are attended to
+        selected_kv_len = self.sparse_k * self.sparse_block_size
+
+        # qk_rope: 2 * B * N1 * S * rope_head_dim * selected_kv_len
+        # BF16, cube core
+        # - q_rope = [B, N1, S, rope_head_dim]
+        # - k_rope = [B, N1, selected_kv, rope_head_dim]
+        # - output_qk_rope = [B, N1, S, selected_kv]
+        qk_rope = (
+            2 * self.attn_bs * self.model_config.num_attention_heads *
+            self.seq_len * self.model_config.qk_rope_head_dim * selected_kv_len
+        )
+        # qk_nope: 2 * B * N1 * S * D * selected_kv_len
+        # INT8, cube core
+        # - q_nope = [B, N1, S, D]
+        # - k_nope = [B, N1, selected_kv, D]
+        # - output_qk_nope = [B, N1, S, selected_kv]
+        qk_nope = (
+            2 * self.attn_bs * self.model_config.num_attention_heads *
+            self.seq_len * self.model_config.kv_lora_rank * selected_kv_len
+        )
+        # softmax: 5 * B * N1 * S * selected_kv_len
+        # BF16, vector core
+        softmax = (
+            5 * self.attn_bs * self.model_config.num_attention_heads *
+            self.seq_len * selected_kv_len
+        )
+        # sv_matmul: 2 * B * N1 * S * selected_kv_len * D
+        # INT8, cube core
+        # - softmax_weights = [B, N1, S, selected_kv]
+        # - v_nope = [B, N1, selected_kv, D]
+        # - output = [B, N1, S, D]
+        sv_matmul = (
+            2 * self.attn_bs * self.model_config.num_attention_heads *
+            self.seq_len * selected_kv_len * self.model_config.kv_lora_rank
+        )
+
+        self.total_computation = qk_rope + qk_nope + softmax + sv_matmul
+        qk_rope_time = qk_rope / self.cube_flops_fp16
+        qk_nope_time = qk_nope / self.cube_flops_int8
+        softmax_time = softmax / self.vec_flops_fp16
+        sv_matmul_time = sv_matmul / self.cube_flops_int8
+        self.compute_time = qk_rope_time + qk_nope_time + softmax_time + sv_matmul_time
+        return self.compute_time
+
+    def memory_cost(self):
+        # Number of selected KV blocks per batch
+        selected_kv_blocks = self.sparse_k * math.ceil(self.seq_len / self.sparse_block_size)
+
+        # q_nope: [B, S, N1, D] INT8
+        q_nope_block = self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.kv_lora_rank
+        # q_rope: [B, S, N1, rope_head_dim] BF16
+        q_rope_block = 2 * self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.qk_rope_head_dim
+
+        # KV cache: only load selected blocks (not full KV cache)
+        # kv_nope: [selected_blocks, block_size, N2, D] INT8
+        # key_nope and value_nope are loaded separately
+        kv_nope_block = 2 * selected_kv_blocks * self.sparse_block_size * self.model_config.kv_lora_rank
+        # kv_rope: [selected_blocks, block_size, N2, rope_head_dim] BF16
+        # key_rope and value_rope are loaded separately
+        kv_rope_block = 4 * selected_kv_blocks * self.sparse_block_size * self.model_config.qk_rope_head_dim
+
+        # Overhead: sparse_indices and block_table
+        q_blocks = math.ceil(self.seq_len / self.sparse_block_size)
+        sparse_indices_bytes = self.attn_bs * q_blocks * self.sparse_k * 4  # int32
+        block_table_bytes = self.attn_bs * math.ceil(self.kv_len / BLOCK_SIZE) * 4  # int32
+
+        # o_block: [B, S, N1, D] BF16
+        o_block = 2 * self.attn_bs * self.seq_len * self.model_config.num_attention_heads * self.model_config.kv_lora_rank
+
+        self.total_data_movement = (q_nope_block + q_rope_block + kv_nope_block +
+                                    kv_rope_block + o_block + sparse_indices_bytes + block_table_bytes)
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth / self.memory_ratio
+        return self.memory_time
+
+
+class MLASparseFlashAttentionFP16(BaseOp):
+    '''
+    Description:
+        Sparse Flash Attention for MLA models in FP16 precision.
+        Uses sparse block selection (top-K) to attend only to selected KV blocks.
+
+        - query: [B, S, N1, D+rope_head_dim] (nope + rope parts)
+        - key/value: stored in paged KV cache, accessed via sparse_indices + block_table
+        - sparse_indices: [B, q_blocks, N2, K] specifies which KV blocks to attend to
+        - Only selected KV blocks are loaded and computed
+
+    Attributes:
+        config: The configuration of the search task.
+        sparse_block_size: The sparse block size for block-sparse selection.
+        sparse_k: Number of selected KV blocks per query block (top-K).
+    '''
+    def __init__(self, config, elem_size=2):
+        super().__init__("MLASparseFlashAttentionFP16", config.aichip_config, elem_size)
+        self.model_config = config.model_config
+        self.attn_bs = config.attn_bs
+        self.kv_len = config.kv_len
+        self.seq_len = config.seq_len
+
+    def compute_cost(self):
+        # qk_position = 2 * b * s * n * sparse_count * (512+64)
+        # BF16, cube core
+        # q = [b, s, n, (512+64)]
+        # k = [b, sparse_count, n, (512+64)]
+        qk_flops = (
+            2 * self.attn_bs * self.seq_len * self.model_config.num_attention_heads *
+            SPARSE_COUNT * (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim)
+        )
+        # softmax: 5 * B * N1 * S * sparse_count
+        softmax_flops = (
+            5 * self.attn_bs * self.model_config.num_attention_heads * self.seq_len * SPARSE_COUNT
+        )
+        # qkv_matmul (sv): 2 * B * N1 * S * D * sparse_count
+        # BF16, cube core
+        # - output_softmax = [B, 128/TP, S, sparse_count]
+        # - v_nope = [B, 128/TP, sparse_count, 512]
+        # - output_matmul = [B, 128/TP, S, 512]
+        sv_flops = (
+            2 * self.attn_bs * self.model_config.num_attention_heads *
+            self.seq_len * self.model_config.kv_lora_rank * SPARSE_COUNT
+        )
+        self.total_computation = qk_flops + softmax_flops + sv_flops
+        self.compute_time = (
+            qk_flops / self.cube_flops_fp16 +
+            softmax_flops / self.vec_flops_fp16 +
+            sv_flops / self.cube_flops_fp16
+        )
+        return self.compute_time
+
+    def memory_cost(self):
+        # q_block: [B, N, S, D+R] bf16
+        q_bytes = 2 * self.attn_bs * self.model_config.num_attention_heads * self.seq_len * (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim)
+        # kv_block: only selected blocks, key+value bf16, N2=1 for MLA
+        # key(D+R) + value(D+R) = 2 * sel * (D+R) * elem_size
+        kv_bytes = 4 * self.attn_bs * SPARSE_COUNT * (self.model_config.kv_lora_rank + self.model_config.qk_rope_head_dim)
+        # sparse_indices: [B, S, SPARSE_COUNT] int32
+        sparse_idx_bytes = self.attn_bs * self.seq_len * SPARSE_COUNT * 4
+        # block_table: [b, kv_len/block_size] int32
+        block_table_bytes = self.attn_bs * self.kv_len / BLOCK_SIZE * 4
+        # o_block: [B, N, S, D] bf16
+        o_bytes = 2 * self.attn_bs * self.model_config.num_attention_heads * self.seq_len * self.model_config.kv_lora_rank
+
+        self.total_data_movement = q_bytes + kv_bytes + o_bytes + sparse_idx_bytes + block_table_bytes
+        self.memory_time = self.total_data_movement / self.local_memory_bandwidth
         return self.memory_time
 
 
