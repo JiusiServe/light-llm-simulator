@@ -204,31 +204,32 @@ class AfdSearch(BaseSearch):
                     if total_die % self.config.aichip_config.num_dies_per_node != 0:
                         continue
 
-                # Binary search on attn_bs
-                attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
-                while attn_bs_max - attn_bs_min > 1:
-                    attn_bs = (attn_bs_min + attn_bs_max) // 2
+                # Sweep all attn_bs from min to max, pick the one with best throughput
+                best_attn_bs = None
+                best_result = None
+                best_throughput = -1
+
+                for attn_bs in range(self.config.min_attn_bs, self.config.max_attn_bs + 1):
                     result = self._evaluate_config(
                         attn_bs, attn_die, ffn_die, routed_expert_per_die, self.config.tpot
                     )
-                    if result is not None:
-                        attn_bs_min = attn_bs
-                    else:
-                        attn_bs_max = attn_bs
+                    if result is None:
+                        continue
+                    throughput = (
+                        attn_bs * self.config.micro_batch_num * attn_die / total_die / result['e2e_time'] / MS_2_SEC
+                    )
+                    if throughput > best_throughput:
+                        best_throughput = throughput
+                        best_attn_bs = attn_bs
+                        best_result = result
 
-                # Use attn_bs_min as the optimal bs
-                attn_bs = attn_bs_min
-
-                # Recompute final results with the optimal attn_bs
-                result = self._evaluate_config(
-                    attn_bs, attn_die, ffn_die, routed_expert_per_die, self.config.tpot
-                )
-                if result is None:
+                if best_result is None:
                     continue
 
-                throughput = (
-                    attn_bs * self.config.micro_batch_num * attn_die / total_die / result['e2e_time'] / MS_2_SEC
-                )
+                attn_bs = best_attn_bs
+                result = best_result
+
+                throughput = best_throughput
 
                 logging.info(f"-------AFD Search Result:-------")
                 logging.info(

@@ -154,24 +154,32 @@ class DeepEpSearch(BaseSearch):
             temp_config.ffn_die = total_die
             temp_config.routed_expert_per_die = routed_expert_per_die
 
-            # search max attention bs
-            while attn_bs_max - attn_bs_min > 1:
-                attn_bs = (attn_bs_min + attn_bs_max) // 2
+            # Sweep all attn_bs from min to max, pick the one with best throughput
+            best_attn_bs = None
+            best_r = None
+            best_throughput = -1
+
+            for attn_bs in range(attn_bs_min, attn_bs_max + 1):
                 r = self._evaluate_config(attn_bs, temp_config, routed_expert_per_die)
 
                 if (r['e2e_time'] > self.config.tpot or
                     r['used_memory'] > aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
-                    attn_bs_max = attn_bs
-                else:
-                    attn_bs_min = attn_bs
+                    continue
 
-            # Final evaluation with optimal attn_bs_min
-            r = self._evaluate_config(attn_bs_min, temp_config, routed_expert_per_die)
-            r['attn_bs'] = attn_bs_min
-            r['throughput'] = attn_bs_min / r['e2e_time'] / MS_2_SEC
-            r['available_memory'] = aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO - r['used_memory']
+                throughput = attn_bs / r['e2e_time'] / MS_2_SEC
+                if throughput > best_throughput:
+                    best_throughput = throughput
+                    best_attn_bs = attn_bs
+                    best_r = r
 
-            results[total_die] = r
+            if best_r is None:
+                continue
+
+            best_r['attn_bs'] = best_attn_bs
+            best_r['throughput'] = best_throughput
+            best_r['available_memory'] = aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO - best_r['used_memory']
+
+            results[total_die] = best_r
 
         return results
 
