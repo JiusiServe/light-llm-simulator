@@ -65,6 +65,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Max FFN dies for Heterogeneous mode")
     parser.add_argument('--die_step2', type=int, default=None,
                         help="Die step for FFN in Heterogeneous mode")
+    parser.add_argument('--kv_cache_quant', type=str, default="bf16",
+                        choices=["bf16", "int8"],
+                        help="KV cache quantization type: bf16 (default) or int8")
 
 
 def run_search(args):
@@ -97,7 +100,8 @@ def run_search(args):
                         device_type2=args.device_type2,
                         min_die2=args.min_die2,
                         max_die2=args.max_die2,
-                        die_step2=args.die_step2
+                        die_step2=args.die_step2,
+                        kv_cache_quant=args.kv_cache_quant
                     )
                     afd_search = AfdSearch(config)
                     afd_search.deployment()
@@ -124,7 +128,8 @@ def run_search(args):
                     device_type2=args.device_type2,
                     min_die2=args.min_die2,
                     max_die2=args.max_die2,
-                    die_step2=args.die_step2
+                    die_step2=args.die_step2,
+                    kv_cache_quant=args.kv_cache_quant
                 )
                 deepep_search = DeepEpSearch(config)
                 deepep_search.deployment()

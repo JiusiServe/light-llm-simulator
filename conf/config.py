@@ -39,7 +39,8 @@ class Config:
         device_type2: Optional[str] = None,
         min_die2: Optional[int] = None,
         max_die2: Optional[int] = None,
-        die_step2: Optional[int] = None
+        die_step2: Optional[int] = None,
+        kv_cache_quant: str = "bf16"
     ) -> None:
         """
         Initialize a Config object.
@@ -76,6 +77,12 @@ class Config:
         if deployment_mode not in valid_deployment_modes:
             raise ValueError(f"Invalid deployment_mode: {deployment_mode}. Must be one of {valid_deployment_modes}")
         self.deployment_mode = deployment_mode
+
+        # Validate kv_cache_quant
+        valid_kv_cache_quant = ("bf16", "int8")
+        if kv_cache_quant not in valid_kv_cache_quant:
+            raise ValueError(f"Invalid kv_cache_quant: {kv_cache_quant}. Must be one of {valid_kv_cache_quant}")
+        self.kv_cache_quant = kv_cache_quant
 
         model_type = ModelType(model_type)
         self.model_type = model_type

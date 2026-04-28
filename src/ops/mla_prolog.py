@@ -90,7 +90,7 @@ class OpMlaProlog(BaseOp):
         weight_dkv = self.model_config.kv_lora_rank * self.model_config.hidden_size
         # tensor W_kr:[d_h^R, h] int8
         weight_kr = self.model_config.qk_rope_head_dim * self.model_config.hidden_size * 2
-        # tensor kv_cache_in:[b, s, dc] int8 [vllm-Ascend bf16]
+        # tensor kv_cache_in:[b, s, dc] int8
         cache_capacity_per_seq = math.ceil(self.model_config.max_kv_length / BLOCK_SIZE)
         block_num = math.ceil(self.config.attn_bs * self.config.seq_len * cache_capacity_per_seq / BLOCK_SIZE)
         kv_cache_in = BLOCK_SIZE * block_num * self.model_config.kv_lora_rank
@@ -117,12 +117,15 @@ class OpMlaProlog(BaseOp):
         # quant_scale_ckv: [d_h^R] float
         quant_scale_ckv = 4 * self.model_config.kv_lora_rank
         # OUTPUT
-        # tensor q_nope:[b, s, n, dc] int8 [vllm-Ascend bf16]
+        # tensor q_nope:[b, s, n, dc] int8
         q_nope = self.config.attn_bs * self.config.seq_len * self.model_config.num_attention_heads * self.model_config.kv_lora_rank
         # tensor q_rope:[b, s, n, d_h^R] bf16
         q_rope = 2 * self.config.attn_bs * self.config.seq_len * self.model_config.num_attention_heads * self.model_config.qk_rope_head_dim
         # tensor dequant_scale_q_nope: [b*s, n, 1] float
         dequant_scale_q_nope = 4 * self.config.attn_bs * self.config.seq_len * self.model_config.num_attention_heads
+        if self.config.kv_cache_quant == "bf16":
+            q_nope = q_nope * 2
+            kv_cache_in = kv_cache_in * 2
         self.total_data_movement = (
             x + weight_dq + weight_uq + weight_uk + weight_qr + weight_dkv + weight_kr + kv_cache_in + kr_cache_in +
             rmsnorm_gamma_cq + rmsnorm_gamma_ckv + rope_sin + rope_cos + cache_index + dequant_scale_x + dequant_scale_w_dq +

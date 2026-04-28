@@ -2,7 +2,7 @@ from conf.common import MAX_AVG_RATIO
 from conf.config import Config
 from src.model.base import BaseModule
 from src.ops import (
-    OpMlaProlog, MLAFlashAttentionInt8, MLASparseFlashAttentionFP16, OpMatmul, OpBatchMatmul,
+    OpMlaProlog, MLAFlashAttention, MLASparseFlashAttention, OpMatmul, OpBatchMatmul,
     OpTransposeBatchMatmul, OpQuantBatchMatmul, OpSwiglu, OpGroupedMatmul,
     Dispatch, Combine, OpAddRmsNorm, OpDynamicQuant, OpMoeGating,
     OpA2ESend, OpA2ERecv, OpE2ARecv, OpLightningIndexer, OpScatterNdUpdate
@@ -39,7 +39,7 @@ class DeepSeekV3DecodeAttn(BaseModule):
 
         self.input_norm = OpAddRmsNorm("input_norm", self.attn_bs, self.config.seq_len, hidden, self.aichip_config)
         self.mla_prolog = OpMlaProlog(self.config)
-        self.page_attention = MLAFlashAttentionInt8(self.config)
+        self.page_attention = MLAFlashAttention(self.config)
         self.bmm_uv_absorb = OpTransposeBatchMatmul("bmm_uv_absorb", heads, bs, self.model_config.kv_lora_rank, self.model_config.v_head_dim, self.aichip_config)
         self.dynamic_quant = OpDynamicQuant("dynamic_quant", bs, v_dim, self.aichip_config)
         self.bmm_o_proj = OpQuantBatchMatmul("bmm_o_proj", bs, v_dim, hidden, self.aichip_config)
@@ -156,7 +156,7 @@ class DeepSeekV32DecodeAttn(DeepSeekV3DecodeAttn):
         # bf16 [bs, 7168] @ [7168, 64] = [bs, 64]
         self.indexer_weights_proj = OpMatmul("indexer_weights_proj_matmul", bs, hidden, self.model_config.index_n_heads, self.aichip_config, elem_size=2)
         self.lightning_indexer = OpLightningIndexer("lightning_indexer", self.config)
-        self.page_attention = MLASparseFlashAttentionFP16(self.config)
+        self.page_attention = MLASparseFlashAttention(self.config)
         self.bmm_uv_absorb = OpTransposeBatchMatmul("bmm_uv_absorb", heads, bs, self.model_config.kv_lora_rank, self.model_config.v_head_dim, self.aichip_config)
         self.dynamic_quant = OpDynamicQuant("dynamic_quant", bs, v_dim, self.aichip_config)
         self.bmm_o_proj = OpQuantBatchMatmul("bmm_o_proj", bs, v_dim, hidden, self.aichip_config)
