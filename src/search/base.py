@@ -1,6 +1,6 @@
 from typing import Tuple
 from abc import ABC, abstractmethod
-from conf.common import BYTE_2_GB, DTYPE_BF16
+from conf.common import BYTE_2_GB, DTYPE_INT8, DTYPE_BF16
 from conf.model_config import ModelConfig
 from conf.config import Config
 
@@ -40,7 +40,8 @@ class BaseSearch(ABC):
         kv_size = (
             attn_bs * self.config.kv_len * 
             (model_config.kv_lora_rank + model_config.qk_rope_head_dim) * 
-            model_config.num_layers * BYTE_2_GB * DTYPE_BF16
+            model_config.num_layers * BYTE_2_GB * 
+            (DTYPE_INT8 if self.config.kv_cache_quant == "int8" else DTYPE_BF16)
         )
 
         # Attention Static Memory
@@ -134,7 +135,8 @@ class BaseSearch(ABC):
             attn_bs * self.config.kv_len * 
             model_config.kv_heads * 
             model_config.head_size * 
-            model_config.num_layers * BYTE_2_GB * DTYPE_BF16
+            model_config.num_layers * BYTE_2_GB *
+            (DTYPE_INT8 if self.config.kv_cache_quant == "int8" else DTYPE_BF16)
         )
 
         # Attention Static Memory

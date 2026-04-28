@@ -136,3 +136,53 @@ def test_heterogeneous_requires_device_type2() -> None:
             ffn_tensor_parallel=1,
             deployment_mode="Heterogeneous",
         )
+
+
+@pytest.mark.unit
+def test_config_kv_cache_quant_default() -> None:
+    """Default kv_cache_quant should be bf16."""
+    cfg = Config(
+        serving_mode="AFD",
+        model_type=ModelType.DEEPSEEK_V3.value,
+        device_type=DeviceType.NvidiaH100SXM.value,
+        min_attn_bs=2, max_attn_bs=32,
+        min_die=16, max_die=16, die_step=16,
+        tpot=200, kv_len=2048,
+        micro_batch_num=2, next_n=1, multi_token_ratio=0.7,
+        attn_tensor_parallel=1, ffn_tensor_parallel=1,
+    )
+    assert cfg.kv_cache_quant == "bf16"
+
+
+@pytest.mark.unit
+def test_config_kv_cache_quant_int8() -> None:
+    """kv_cache_quant=int8 should be accepted."""
+    cfg = Config(
+        serving_mode="AFD",
+        model_type=ModelType.DEEPSEEK_V3.value,
+        device_type=DeviceType.NvidiaH100SXM.value,
+        min_attn_bs=2, max_attn_bs=32,
+        min_die=16, max_die=16, die_step=16,
+        tpot=200, kv_len=2048,
+        micro_batch_num=2, next_n=1, multi_token_ratio=0.7,
+        attn_tensor_parallel=1, ffn_tensor_parallel=1,
+        kv_cache_quant="int8",
+    )
+    assert cfg.kv_cache_quant == "int8"
+
+
+@pytest.mark.unit
+def test_config_kv_cache_quant_invalid_raises() -> None:
+    """Invalid kv_cache_quant should raise ValueError."""
+    with pytest.raises(ValueError, match="Invalid kv_cache_quant"):
+        Config(
+            serving_mode="AFD",
+            model_type=ModelType.DEEPSEEK_V3.value,
+            device_type=DeviceType.NvidiaH100SXM.value,
+            min_attn_bs=2, max_attn_bs=32,
+            min_die=16, max_die=16, die_step=16,
+            tpot=200, kv_len=2048,
+            micro_batch_num=2, next_n=1, multi_token_ratio=0.7,
+            attn_tensor_parallel=1, ffn_tensor_parallel=1,
+            kv_cache_quant="fp32",
+        )

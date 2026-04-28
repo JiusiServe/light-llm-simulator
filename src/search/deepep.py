@@ -29,7 +29,7 @@ class DeepEpSearch(BaseSearch):
         super().__init__(config)
         self.perf_deepep_results = []
 
-    def _evaluate_config(self, attn_bs, temp_config, routed_expert_per_die):
+    def _evaluate_config(self, attn_bs, routed_expert_per_die):
         """Evaluate a single (attn_bs) configuration.
 
         Runs the model and computes timing, memory, and e2e_time.
@@ -46,10 +46,10 @@ class DeepEpSearch(BaseSearch):
                 self.config.model_config, attn_bs
             )
         ffn_bs = attn_bs * self.config.model_config.num_experts_per_tok
-        temp_config.attn_bs = attn_bs
-        temp_config.ffn_bs = ffn_bs
+        self.config.attn_bs = attn_bs
+        self.config.ffn_bs = ffn_bs
 
-        model = get_model(temp_config)
+        model = get_model(self.config)
         attn = model["attn"]
         attn()
         moe = model["moe"]
@@ -105,22 +105,16 @@ class DeepEpSearch(BaseSearch):
             'used_memory': used_memory,
         }
 
-    def _run_homogeneous_deepep(self, device_type_str: str, min_die: int, max_die: int, die_step: int) -> dict:
+    def _run_homogeneous_deepep(self, min_die: int, max_die: int, die_step: int) -> dict:
         '''
         Run homogeneous DeepEP on a single device type.
 
         Args:
-            device_type_str: Device type string (e.g., "Ascend_A3Pod")
             min_die, max_die, die_step: Die search range
 
         Returns:
             Dictionary mapping total_die -> throughput
         '''
-        from conf.hardware_config import DeviceType, HWConf
-
-        device_type = DeviceType(device_type_str)
-        aichip_config = HWConf.create(device_type)
-
         results = {}
 
         for total_die in range(min_die, max_die + 1, die_step):
@@ -129,41 +123,20 @@ class DeepEpSearch(BaseSearch):
                 self.config.model_config.n_shared_experts,
                 total_die
             )
-            attn_bs_min, attn_bs_max = self.config.min_attn_bs, self.config.max_attn_bs
-
-            # Create a temporary config with the device type
-            temp_config = Config(
-                serving_mode="DeepEP",
-                model_type=self.config.model_type.value,
-                device_type=device_type_str,
-                min_attn_bs=self.config.min_attn_bs,
-                max_attn_bs=self.config.max_attn_bs,
-                min_die=min_die,
-                max_die=max_die,
-                die_step=die_step,
-                tpot=self.config.tpot,
-                kv_len=self.config.kv_len,
-                micro_batch_num=1,
-                next_n=self.config.seq_len - 1,
-                multi_token_ratio=self.config.multi_token_ratio,
-                attn_tensor_parallel=self.config.attn_tensor_parallel,
-                ffn_tensor_parallel=self.config.ffn_tensor_parallel,
-                deployment_mode="Homogeneous"
-            )
-            temp_config.attn_die = total_die
-            temp_config.ffn_die = total_die
-            temp_config.routed_expert_per_die = routed_expert_per_die
+            self.config.attn_die = total_die
+            self.config.ffn_die = total_die
+            self.config.routed_expert_per_die = routed_expert_per_die
 
             # Sweep all attn_bs from min to max, pick the one with best throughput
             best_attn_bs = None
             best_r = None
             best_throughput = -1
 
-            for attn_bs in range(attn_bs_min, attn_bs_max + 1):
-                r = self._evaluate_config(attn_bs, temp_config, routed_expert_per_die)
+            for attn_bs in range(self.config.min_attn_bs, self.config.max_attn_bs + 1):
+                r = self._evaluate_config(attn_bs, routed_expert_per_die)
 
                 if (r['e2e_time'] > self.config.tpot or
-                    r['used_memory'] > aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
+                    r['used_memory'] > self.config.aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO):
                     continue
 
                 throughput = attn_bs / r['e2e_time'] / MS_2_SEC
@@ -177,7 +150,7 @@ class DeepEpSearch(BaseSearch):
 
             best_r['attn_bs'] = best_attn_bs
             best_r['throughput'] = best_throughput
-            best_r['available_memory'] = aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO - best_r['used_memory']
+            best_r['available_memory'] = self.config.aichip_config.aichip_memory * BYTE_2_GB * MEMORY_THRESHOLD_RATIO - best_r['used_memory']
 
             results[total_die] = best_r
 
@@ -198,23 +171,31 @@ class DeepEpSearch(BaseSearch):
         logging.info("This is for comparison purposes only, NOT a truly heterogeneous deployment.")
         logging.info("=" * 60)
 
+        # Save original device config
+        orig_device_type = self.config.device_type
+        orig_aichip_config = self.config.aichip_config
+
         # Run DeepEP on device_type1 (attention device)
         logging.info(f"Running DeepEP on {self.config.device_type.value} (device_type1)...")
         results_device1 = self._run_homogeneous_deepep(
-            self.config.device_type.value,
             self.config.min_die,
             self.config.max_die,
             self.config.die_step
         )
 
-        # Run DeepEP on device_type2 (FFN device)
-        logging.info(f"Running DeepEP on {self.config.device_type2.value} (device_type2)...")
+        # Swap to device_type2 (FFN device)
+        self.config.device_type = self.config.device_type2
+        self.config.aichip_config = self.config.aichip_config2
+        logging.info(f"Running DeepEP on {self.config.device_type.value} (device_type2)...")
         results_device2 = self._run_homogeneous_deepep(
-            self.config.device_type2.value,
             self.config.min_die2,
             self.config.max_die2,
             self.config.die_step2
         )
+
+        # Restore original device config
+        self.config.device_type = orig_device_type
+        self.config.aichip_config = orig_aichip_config
 
         # Combine results with weighted average throughput
         for die1, r1 in results_device1.items():
@@ -262,7 +243,6 @@ class DeepEpSearch(BaseSearch):
             Search the optimal attention batch size for the model used DeepEP serving.
         '''
         results = self._run_homogeneous_deepep(
-            self.config.device_type.value,
             self.config.min_die,
             self.config.max_die,
             self.config.die_step

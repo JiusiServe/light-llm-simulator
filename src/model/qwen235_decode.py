@@ -2,7 +2,7 @@ from conf.common import MAX_AVG_RATIO
 from conf.config import Config
 from src.model.base import BaseModule
 from src.ops import (
-    OpQuantBatchMatmul, OpBatchMatmul, OpRotary, GQAFlashAttentionFP16,
+    OpQuantBatchMatmul, OpBatchMatmul, OpRotary, GQAFlashAttention,
     Dispatch, Combine, OpGroupedMatmul, OpSwiglu, OpAddRmsNorm,
     OpDynamicQuant, OpA2ESend, OpA2ERecv, OpE2ARecv
 )
@@ -43,7 +43,7 @@ class Qwen235DecodeAttn(BaseModule):
         self.value_states = OpBatchMatmul("value_states", bs, hidden, kv_heads * head_size, self.aichip_config)
         self.query_rope = OpRotary("query_rope", bs, num_heads, self.config.seq_len, hidden, self.aichip_config)
         self.key_rope = OpRotary("key_rope", bs, kv_heads, self.config.seq_len, hidden, self.aichip_config)
-        self.page_attention = GQAFlashAttentionFP16(self.config)
+        self.page_attention = GQAFlashAttention(self.config)
         self.dynamic_quant = OpDynamicQuant("dynamic_quant", bs, num_heads * head_size, self.aichip_config)
         self.bmm_o_proj = OpQuantBatchMatmul("bmm_o_proj", bs, num_heads * head_size, hidden, self.aichip_config)
         self.post_attention_norm = OpAddRmsNorm("post_norm", self.attn_bs, self.config.seq_len, hidden, self.aichip_config)

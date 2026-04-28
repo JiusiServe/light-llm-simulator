@@ -1,8 +1,9 @@
 from src.ops.base import BaseOp
 from src.ops.matmul import OpMatmul, OpBatchMatmul, OpTransposeBatchMatmul, OpQuantBatchMatmul, OpGroupedMatmul
 from src.ops.page_attention import (
-    MLAFlashAttentionFP16, MLAFlashAttentionInt8,
-    GQAFlashAttentionFP16, MLASparseFlashAttentionFP16
+    MLAFlashAttention,
+    GQAFlashAttention,
+    MLASparseFlashAttention
 )
 from src.ops.swiglu import OpSwiglu
 from src.ops.mla_prolog import OpMlaProlog
@@ -22,10 +23,9 @@ __all__ = [
     "OpTransposeBatchMatmul",
     "OpQuantBatchMatmul",
     "OpGroupedMatmul",
-    "MLAFlashAttentionFP16",
-    "MLAFlashAttentionInt8",
-    "GQAFlashAttentionFP16",
-    "MLASparseFlashAttentionFP16",
+    "MLAFlashAttention",
+    "GQAFlashAttention",
+    "MLASparseFlashAttention",
     "OpSwiglu",
     "OpMlaProlog",
     "Dispatch",

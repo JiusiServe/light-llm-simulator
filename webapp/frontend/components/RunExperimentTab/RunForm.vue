@@ -126,6 +126,13 @@
           <input type="number" v-model.number="form.ffn_tensor_parallel" min="1" />
         </div>
       </div>
+      <div class="field">
+        <label>KV Cache Quantization</label>
+        <select v-model="form.kv_cache_quant">
+          <option value="bf16">BF16</option>
+          <option value="int8">INT8</option>
+        </select>
+      </div>
     </details>
 
     <div v-if="error" class="error-message">
@@ -182,7 +189,8 @@ export default {
       next_n: 1,
       multi_token_ratio: 0.7,
       attn_tensor_parallel: 1,
-      ffn_tensor_parallel: 1
+      ffn_tensor_parallel: 1,
+      kv_cache_quant: 'bf16'
     });
 
     const tpotInput = ref('50');

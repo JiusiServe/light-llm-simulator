@@ -2,7 +2,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, APIRouter
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from uuid import uuid4
 import pandas as pd
 import subprocess
@@ -55,6 +55,15 @@ class RunRequest(BaseModel):
     min_die2: Optional[int] = None
     max_die2: Optional[int] = None
     die_step2: Optional[int] = None
+    kv_cache_quant: str = "bf16"
+
+    @field_validator("kv_cache_quant")
+    @classmethod
+    def validate_kv_cache_quant(cls, v: str) -> str:
+        valid = ("bf16", "int8")
+        if v not in valid:
+            raise ValueError(f"kv_cache_quant must be one of {valid}, got '{v}'")
+        return v
 
 
 def _sanitize_args(req: RunRequest) -> List[str]:
@@ -71,6 +80,7 @@ def _sanitize_args(req: RunRequest) -> List[str]:
         "--multi_token_ratio", str(req.multi_token_ratio),
         "--attn_tensor_parallel", str(req.attn_tensor_parallel),
         "--ffn_tensor_parallel", str(req.ffn_tensor_parallel),
+        "--kv_cache_quant", req.kv_cache_quant,
         "--deployment_mode", req.deployment_mode,
     ]
     if req.die_step is not None:
