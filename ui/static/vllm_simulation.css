@@ -1,0 +1,232 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #f4f6fa;
+    font-family: "Inter", sans-serif;
+}
+
+.dashboard-root {
+    display: grid;
+    grid-template-columns: 35% 65%;
+    grid-template-rows: 95%;
+    gap: 10px;
+    height: 99%;
+    width: 98%;
+    overflow: hidden;
+}
+
+.left-column {
+    display: grid;
+    grid-template-rows: 65% 30%;
+    gap: 10px;
+}
+
+.right-column {
+    display: grid;
+    grid-template-rows: 48% 48%;
+    gap: 20px;
+}
+
+.metrics-card,
+.log-card,
+.graph-card,
+.live-graph-card {
+    border-radius: 16px;
+    padding: 20px;
+    min-height: 0;
+    min-width: 0;
+}
+
+.log-card, .table-container {
+    overflow-y: auto;
+}
+
+.log-card {
+    background: #1e1e2f;
+    color: #f4f4f8;
+    font-family: 'Courier New', monospace;
+    font-size: 1.5em;
+    padding: 10px;
+}
+
+.metrics-card table {
+    width: 98%;
+    height: 95%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 1.3em;
+    font-family: 'Inter', sans-serif;
+    background: #ffffff;
+    border-radius: 12px;
+    overflow: auto;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.metrics-card tr {
+    transition: background 0.2s ease;
+    font-size: 1.3em;
+}
+
+.metrics-card tr:hover {
+    background: #f5f5f7;
+}
+
+.metrics-card td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #eee;
+    color: #2b2b2b;
+    font-size: 1em;
+}
+
+.metrics-card td:first-child {
+    text-align: left;
+    font-size: 1em;
+    font-weight: 400;
+    color: #5a5a5a;
+}
+
+.metrics-card td:last-child {
+    text-align: right;
+    font-weight: 500;
+    color: #1e1e1e;
+}
+
+.metrics-card tr:last-child td {
+    border-bottom: none;
+}
+
+.graph-card {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.graph-card table {
+    width: 98%;
+    font-size: 1.5em;
+    font-family: 'Inter', sans-serif;
+    color: #1f2a38;
+    overflow: hidden;
+}
+
+.graph-card thead {
+    background-color: #5a8fcf;
+    color: white;
+    font-weight: 600;
+}
+
+.graph-card th {
+    padding: 12px 16px;
+    text-align: center;
+    border-right: 1px solid #3a5a8c;
+}
+
+.graph-card th:last-child {
+    border-right: none;
+}
+
+.graph-card tbody tr:nth-child(even),
+.graph-card tbody tr:nth-child(odd) {
+    background-color: #f9f9f9;
+}
+
+.graph-card tbody tr:hover {
+    background-color: #cce0ff;
+}
+
+.graph-card td {
+    padding: 12px 16px;
+    text-align: center;
+    border-bottom: 1px solid #d1d9e6;
+}
+
+.table-container {
+    max-height: 98%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-radius: 12px;
+    border: 1px solid #e0e6f0;
+}
+
+.table-container::-webkit-scrollbar,
+.log-card::-webkit-scrollbar,
+.graph-card::-webkit-scrollbar{
+    width: 8px;
+}
+
+.table-container::-webkit-scrollbar-track,
+.log-card::-webkit-scrollbar-track ,
+.graph-card::-webkit-scrollbar-track{
+    background: #f3f6fa;
+    border-radius: 10px;
+}
+
+.table-container::-webkit-scrollbar-thumb,
+.log-card::-webkit-scrollbar-thumb,
+.graph-card::-webkit-scrollbar-thumb{
+    background: #b6c5dd;
+    border-radius: 10px;
+    transition: background 0.2s;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover,
+.log-card::-webkit-scrollbar-thumb:hover,
+.graph-card::-webkit-scrollbar-thumb:hover{
+    background: #8da4c9;
+}
+
+.live-graph-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: white;
+    justify-content: center;
+    align-items: center;
+    width: 90%;
+    margin: 0 auto;
+}
+
+.live-graph-card canvas {
+    flex: 1;
+}
+
+.live-graph-card canvas {
+    flex: 1;
+    height: 87% !important;
+    max-width: 95%;
+    max-height: 90%;
+    display: block;
+}
+
+.tooltip {
+    position: relative;
+    cursor: pointer;
+    display: inline-block;
+    margin-left: 5px;
+}
+
+.tooltiptext {
+    visibility: hidden;
+    width: 300px;
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    border-radius: 4px;
+    padding: 8px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+
